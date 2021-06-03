@@ -7,6 +7,7 @@ package com.erhannis.lancopy;
 
 import java.util.HashMap;
 import java.util.concurrent.ConcurrentHashMap;
+import java.util.concurrent.TimeUnit;
 import javax.jmdns.ServiceInfo;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -23,7 +24,7 @@ import okio.ByteString;
 public class WsClient extends WebSocketListener {
   private final DataOwner dataOwner;
   private final ConcurrentHashMap<WebSocket, String> socketIds = new ConcurrentHashMap<>();
-  private final OkHttpClient client = new OkHttpClient();
+  private final OkHttpClient client = new OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build();
 
   public WsClient(DataOwner dataOwner) {
     this.dataOwner = dataOwner;
