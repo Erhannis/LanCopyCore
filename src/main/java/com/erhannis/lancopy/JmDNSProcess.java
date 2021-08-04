@@ -43,6 +43,25 @@ public class JmDNSProcess {
       this.dataOwner = dataOwner;
       this.localId = localId;
       this.wsClient = wsClient;
+      this.dataOwner.remoteNodes.subscribe((Change<String, NodeInfo> change) -> {
+        //TODO This seems a little rickety to me
+        if (change.wasRemoved) {
+          if (change.wasAdded) {
+            // Value swapped
+            if (Objects.equals(change.valueRemoved.id, change.valueAdded.id)) {
+              if (!Objects.equals(change.valueRemoved.url, change.valueAdded.url)) {
+                // URL has changed
+                //TODO Seems like this could result in a subsequent "connection closed" msg from the client, on the first URL, messing up the apparent state.
+                wsClient.addNode(change.valueAdded);
+              }
+            }
+          } else {
+            //TODO Removed outright.  Do something?
+          }
+        } else if (change.wasAdded) {
+          wsClient.addNode(change.valueAdded);
+        }
+      });
     }
 
     @Override
@@ -61,8 +80,7 @@ public class JmDNSProcess {
     public void serviceResolved(ServiceEvent event) {
       System.out.println("Service resolved: " + event.getInfo());
       if (!Objects.equals(event.getName(), localId.toString())) {
-        dataOwner.remoteServices.put(event.getName(), event.getInfo()); //TODO Change
-        wsClient.addService(event.getInfo());
+        dataOwner.observedNode(new NodeInfo(event.getName(), event.getInfo().getURL("http"), "???", NodeInfo.State.ACTIVE));
       }
     }
   }
@@ -112,14 +130,6 @@ public class JmDNSProcess {
       wsServer.broadcast(summary);
     });
 
-    dataOwner.remoteServices.subscribe((Change<String, ServiceInfo> change) -> {
-      if (change.wasAdded) {
-        dataOwner.remoteSummaries.put(change.key, "???"); //TODO Fix
-      } else if (change.wasRemoved) {
-        dataOwner.remoteSummaries.remove(change.key);
-      }
-    });
-
     Zeroconf zeroconf0 = null;
     Service zcService0 = null;
     try {
@@ -160,7 +170,7 @@ public class JmDNSProcess {
   private final OkHttpClient client = new OkHttpClient();
 
   public Data pullFromNode(String id) throws IOException {
-    Request request = new Request.Builder().url(dataOwner.remoteServices.get(id).getURL("http") + "/data").build();
+    Request request = new Request.Builder().url(dataOwner.remoteNodes.get(id).url + "/data").build();
     try (Response response = client.newCall(request).execute()) {
       switch (response.header("content-type")) {
         case "text/plain":

@@ -27,8 +27,7 @@ public class DataOwner {
   
   public final Observable<String> localSummary = new Observable<>();
   public final Observable<Data> localData = new Observable<>();
-  public final ObservableMap<String, String> remoteSummaries = new ObservableMap<>();
-  public final ObservableMap<String, ServiceInfo> remoteServices = new ObservableMap<>();
+  public final ObservableMap<String, NodeInfo> remoteNodes = new ObservableMap<>();
   
   public boolean cachedSettingLoopClipboard = false;
   public boolean cachedSettingSaveSettingsOnExit = true;
@@ -41,6 +40,10 @@ public class DataOwner {
       summary = summary.substring(0, Math.min(summary.length(), SUMMARY_LENGTH));
       localSummary.set(summary);
     });
+  }
+  
+  public void observedNode(NodeInfo info) {
+      
   }
   
   public void saveSettings() {

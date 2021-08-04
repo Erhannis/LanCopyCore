@@ -23,7 +23,8 @@ import okio.ByteString;
  */
 public class WsClient extends WebSocketListener {
   private final DataOwner dataOwner;
-  private final ConcurrentHashMap<WebSocket, String> socketIds = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<WebSocket, NodeInfo> socket2info = new ConcurrentHashMap<>();
+  private final ConcurrentHashMap<NodeInfo, WebSocket> info2socket = new ConcurrentHashMap<>();
   private final OkHttpClient client = new OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build();
 
   public WsClient(DataOwner dataOwner) {
@@ -42,7 +43,7 @@ public class WsClient extends WebSocketListener {
   public void onMessage(WebSocket webSocket, String text) {
     System.out.println("CWS Receiving : " + text);
     text = text.substring(0, Math.min(text.length(), dataOwner.SUMMARY_LENGTH));
-    dataOwner.remoteSummaries.put(socketIds.get(webSocket), text);
+    dataOwner.remoteSummaries.put(socketIds.get(webSocket), new NodeInfo(text, true));
   }
 
   @Override
@@ -65,10 +66,10 @@ public class WsClient extends WebSocketListener {
     socketIds.remove(webSocket);
   }
 
-  public void addService(ServiceInfo serviceInfo) {
-    Request request = new Request.Builder().url(serviceInfo.getURL()+"/monitor").build();
+  public void addNode(NodeInfo info) {
+    Request request = new Request.Builder().url(info.url+"/monitor").build();
     WebSocket ws = client.newWebSocket(request, this);
-    socketIds.put(ws, serviceInfo.getName());
+    socketIds.put(ws, info.id);
   }
 
   public void shutdown() {
