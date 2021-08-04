@@ -24,6 +24,7 @@ import okio.ByteString;
 public class WsClient extends WebSocketListener {
   private final DataOwner dataOwner;
   private final ConcurrentHashMap<WebSocket, NodeInfo> socket2info = new ConcurrentHashMap<>();
+  //TODO Bleh, I had a reason for adding this, what was it?
   private final ConcurrentHashMap<NodeInfo, WebSocket> info2socket = new ConcurrentHashMap<>();
   private final OkHttpClient client = new OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build();
 
@@ -43,7 +44,8 @@ public class WsClient extends WebSocketListener {
   public void onMessage(WebSocket webSocket, String text) {
     System.out.println("CWS Receiving : " + text);
     text = text.substring(0, Math.min(text.length(), dataOwner.SUMMARY_LENGTH));
-    dataOwner.remoteSummaries.put(socketIds.get(webSocket), new NodeInfo(text, true));
+    NodeInfo info = socket2info.get(webSocket);
+    dataOwner.observedNode(new NodeInfo(info.id, info.url, text, NodeInfo.State.ACTIVE));
   }
 
   @Override
@@ -55,25 +57,27 @@ public class WsClient extends WebSocketListener {
   public void onClosing(WebSocket webSocket, int code, String reason) {
     webSocket.close(NORMAL_CLOSURE_STATUS, null); //TODO Should this?
     System.out.println("CWS Closing : " + code + " / " + reason);
-    dataOwner.remoteServices.remove(socketIds.get(webSocket));
-    socketIds.remove(webSocket);
+    NodeInfo info = socket2info.get(webSocket);
+    dataOwner.observedNode(new NodeInfo(info.id, info.url, info.summary, NodeInfo.State.INACTIVE));
   }
 
   @Override
   public void onFailure(WebSocket webSocket, Throwable t, Response response) {
     System.err.println("CWS Error : " + t.getMessage());
-    dataOwner.remoteServices.remove(socketIds.get(webSocket));
-    socketIds.remove(webSocket);
+    NodeInfo info = socket2info.get(webSocket);
+    dataOwner.observedNode(new NodeInfo(info.id, info.url, info.summary, NodeInfo.State.INACTIVE));
   }
 
   public void addNode(NodeInfo info) {
+    System.out.println("CWS addNode " + info.id);
     Request request = new Request.Builder().url(info.url+"/monitor").build();
     WebSocket ws = client.newWebSocket(request, this);
-    socketIds.put(ws, info.id);
+    socket2info.put(ws, info);
+    info2socket.put(info, ws);
   }
 
   public void shutdown() {
-    for (WebSocket ws : socketIds.keySet()) {
+    for (WebSocket ws : socket2info.keySet()) {
       ws.close(NORMAL_CLOSURE_STATUS, "Shutting down");
     }
     client.dispatcher().executorService().shutdown();

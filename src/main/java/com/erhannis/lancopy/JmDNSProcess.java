@@ -49,7 +49,8 @@ public class JmDNSProcess {
           if (change.wasAdded) {
             // Value swapped
             if (Objects.equals(change.valueRemoved.id, change.valueAdded.id)) {
-              if (!Objects.equals(change.valueRemoved.url, change.valueAdded.url)) {
+              //TODO Yeaaah, my instincts say this thing needs looked at, bleh, something something infinite loop OR missed opportunities
+              if (!Objects.equals(change.valueRemoved.url, change.valueAdded.url) && change.valueAdded.active == NodeInfo.State.ACTIVE) {
                 // URL has changed
                 //TODO Seems like this could result in a subsequent "connection closed" msg from the client, on the first URL, messing up the apparent state.
                 wsClient.addNode(change.valueAdded);

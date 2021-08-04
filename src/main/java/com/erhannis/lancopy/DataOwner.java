@@ -43,7 +43,7 @@ public class DataOwner {
   }
   
   public void observedNode(NodeInfo info) {
-      
+    remoteNodes.put(info.id, info);
   }
   
   public void saveSettings() {
