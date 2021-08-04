@@ -70,10 +70,14 @@ public class WsClient extends WebSocketListener {
 
   public void addNode(NodeInfo info) {
     System.out.println("CWS addNode " + info.id);
-    Request request = new Request.Builder().url(info.url+"/monitor").build();
+    //TODO Janky addressing again
+    Request request = new Request.Builder().url("http://"+info.url+"/monitor").build();
     WebSocket ws = client.newWebSocket(request, this);
     socket2info.put(ws, info);
     info2socket.put(info, ws);
+    // For availability robustness, self-report to server
+    ws.send(dataOwner.ID+":"+dataOwner.PORT+":"+dataOwner.localSummary.get());
+    //ws.send("asdfasdf");
   }
 
   public void shutdown() {

@@ -14,6 +14,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.Properties;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
@@ -28,6 +29,9 @@ public class DataOwner {
   public final Observable<String> localSummary = new Observable<>();
   public final Observable<Data> localData = new Observable<>();
   public final ObservableMap<String, NodeInfo> remoteNodes = new ObservableMap<>();
+
+  public final String ID = "LanCopy-" + UUID.randomUUID();
+  public int PORT;
   
   public boolean cachedSettingLoopClipboard = false;
   public boolean cachedSettingSaveSettingsOnExit = true;

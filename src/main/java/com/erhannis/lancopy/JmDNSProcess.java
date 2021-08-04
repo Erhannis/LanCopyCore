@@ -36,12 +36,10 @@ import xyz.gianlu.zeroconf.Zeroconf;
 public class JmDNSProcess {
   private static class LCListener implements ServiceListener {
     private final DataOwner dataOwner;
-    private final String localId;
     private final WsClient wsClient;
 
-    public LCListener(DataOwner dataOwner, String localId, WsClient wsClient) {
+    public LCListener(DataOwner dataOwner, WsClient wsClient) {
       this.dataOwner = dataOwner;
-      this.localId = localId;
       this.wsClient = wsClient;
       this.dataOwner.remoteNodes.subscribe((Change<String, NodeInfo> change) -> {
         //TODO This seems a little rickety to me
@@ -80,14 +78,12 @@ public class JmDNSProcess {
     @Override
     public void serviceResolved(ServiceEvent event) {
       System.out.println("Service resolved: " + event.getInfo());
-      if (!Objects.equals(event.getName(), localId.toString())) {
-        dataOwner.observedNode(new NodeInfo(event.getName(), event.getInfo().getURL("http"), "???", NodeInfo.State.ACTIVE));
+      if (!Objects.equals(event.getName(), dataOwner.ID.toString())) {
+        //TODO The address thing is kinda janky
+        dataOwner.observedNode(new NodeInfo(event.getName(), event.getInfo().getHostAddress()+":"+event.getInfo().getPort(), "???", NodeInfo.State.ACTIVE));
       }
     }
   }
-
-  public final String ID = "LanCopy-" + UUID.randomUUID();
-  public final int PORT;
 
   private final DataOwner dataOwner;
   private final WsServer wsServer;
@@ -122,8 +118,8 @@ public class JmDNSProcess {
     });
     //TODO Support files
     Spark.awaitInitialization();
-    PORT = Spark.port(); // There's a brief race condition, here, btw, if endpoint is called before this line
-    System.out.println("JmDNSProcess " + ID + " starting on port " + PORT);
+    dataOwner.PORT = Spark.port(); // There's a brief race condition, here, btw, if endpoint is called before this line
+    System.out.println("JmDNSProcess " + dataOwner.ID + " starting on port " + dataOwner.PORT);
 
     //TODO Should it be the wsServer that registers itself??  Unsure.
     dataOwner.localSummary.subscribe((summary) -> {
@@ -139,7 +135,7 @@ public class JmDNSProcess {
                .setUseIpv6(false)
                .addAllNetworkInterfaces();
 
-      zcService0 = new Service(ID, "lancopy", PORT);
+      zcService0 = new Service(dataOwner.ID, "lancopy", dataOwner.PORT);
       zeroconf0.announce(zcService0);
     } catch (IOException ex) {
       Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
@@ -152,7 +148,7 @@ public class JmDNSProcess {
       // Create a JmDNS instance
       jmdns0 = JmDNS.create(InetAddress.getLocalHost());
 
-      jmdns0.addServiceListener("_lancopy._tcp.local.", new LCListener(dataOwner, ID, wsClient));
+      jmdns0.addServiceListener("_lancopy._tcp.local.", new LCListener(dataOwner, wsClient));
     } catch (IOException e) {
       System.out.println(e.getMessage());
     }
@@ -171,7 +167,8 @@ public class JmDNSProcess {
   private final OkHttpClient client = new OkHttpClient();
 
   public Data pullFromNode(String id) throws IOException {
-    Request request = new Request.Builder().url(dataOwner.remoteNodes.get(id).url + "/data").build();
+    //TODO Janky addressing, again
+    Request request = new Request.Builder().url("http://"+dataOwner.remoteNodes.get(id).url+"/data").build();
     try (Response response = client.newCall(request).execute()) {
       switch (response.header("content-type")) {
         case "text/plain":

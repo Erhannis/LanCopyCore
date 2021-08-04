@@ -34,6 +34,7 @@ public class WsServer {
 
   @OnWebSocketConnect
   public void connected(Session session) throws IOException {
+    System.out.println("SWS Connected");
     sessions.add(session);
     try {
       String str = dataOwner.localSummary.get();
@@ -45,12 +46,19 @@ public class WsServer {
 
   @OnWebSocketClose
   public void closed(Session session, int statusCode, String reason) {
+    System.out.println("SWS Closing : " + statusCode + " / " + reason);
     sessions.remove(session);
   }
 
   @OnWebSocketMessage
   public void message(Session session, String message) throws IOException {
-    // Nothing, I think
+      System.out.println("SWS Receiving : " + message);
+      String[] parts = message.split(";", 3);
+      String id = parts[0];
+      int port = Integer.parseInt(parts[1]);
+      String summary = parts[2];
+      String url = session.getRemoteAddress().getAddress().getHostAddress()+":"+port;
+      dataOwner.observedNode(new NodeInfo(id, url, summary, NodeInfo.State.ACTIVE));
   }
 
   public void broadcast(String str) {
