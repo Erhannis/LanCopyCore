@@ -52,6 +52,7 @@ public class WsServer {
 
   @OnWebSocketMessage
   public void message(Session session, String message) throws IOException {
+    try {
       System.out.println("SWS Receiving : " + message);
       String[] parts = message.split(";", 3);
       String id = parts[0];
@@ -59,6 +60,12 @@ public class WsServer {
       String summary = parts[2];
       String url = session.getRemoteAddress().getAddress().getHostAddress()+":"+port;
       dataOwner.observedNode(new NodeInfo(id, url, summary, NodeInfo.State.ACTIVE));
+    } catch (Throwable t) {
+      if (t instanceof IOException) {
+          throw t;
+      }
+      t.printStackTrace();
+    }
   }
 
   public void broadcast(String str) {

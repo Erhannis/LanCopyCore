@@ -76,7 +76,7 @@ public class WsClient extends WebSocketListener {
     socket2info.put(ws, info);
     info2socket.put(info, ws);
     // For availability robustness, self-report to server
-    ws.send(dataOwner.ID+":"+dataOwner.PORT+":"+dataOwner.localSummary.get());
+    ws.send(dataOwner.ID+";"+dataOwner.PORT+";"+dataOwner.localSummary.get());
     //ws.send("asdfasdf");
   }
 

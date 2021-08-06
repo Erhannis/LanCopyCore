@@ -44,4 +44,9 @@ public class NodeInfo {
         if (!Objects.equal(this.active, o.active)) return false;
         return true;
     }
+
+    @Override
+    public String toString() {
+        return "DO{"+this.id+","+this.url+","+this.summary+","+this.active+"}";
+    }
 }

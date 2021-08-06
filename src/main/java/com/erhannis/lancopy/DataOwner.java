@@ -47,6 +47,7 @@ public class DataOwner {
   }
   
   public void observedNode(NodeInfo info) {
+    System.out.println("DO observedNode "+info);
     remoteNodes.put(info.id, info);
   }
   
