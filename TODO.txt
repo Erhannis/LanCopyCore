@@ -1,0 +1,13 @@
+share info about other nodes
+share data through mesh
+alternate methods of communication
+  optionize which interfaces
+  optionize which phy transports
+
+ReAdvertise button
+RePublish button
+Manual add node, connect over WAN
+
+
+Gonna need controllers for each PHY type - actually, each protocol
+  One controller can have multiple Comms, though.
