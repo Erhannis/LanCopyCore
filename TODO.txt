@@ -2,6 +2,7 @@ share info about other nodes
 share data through mesh
 alternate methods of communication
   optionize which interfaces
+    separately optionize client vs server
   optionize which phy transports
 
 ReAdvertise button

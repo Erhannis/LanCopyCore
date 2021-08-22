@@ -14,6 +14,7 @@ import java.net.InetAddress;
 import java.net.MulticastSocket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jcsp.lang.Alternative;
@@ -154,10 +155,12 @@ public class MulticastAdvertiser implements CSProcess {
                 switch (alt.priSelect()) {
                     case 0: // txAdIn
                         Advertisement ad = txAdIn.read();
-                        try {
-                            mp.multicast(dataOwner.serialize(ad));
-                        } catch (IOException ex) {
-                            Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
+                        if (Objects.equals(ad.id, dataOwner.ID)) {
+                            try {
+                                mp.multicast(dataOwner.serialize(ad));
+                            } catch (IOException ex) {
+                                Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
+                            }
                         }
                         break;
                     case 1: // multicastIn
