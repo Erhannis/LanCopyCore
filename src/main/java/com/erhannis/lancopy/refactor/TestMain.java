@@ -9,6 +9,8 @@ import com.erhannis.lancopy.DataOwner;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.UUID;
+import jcsp.helpers.CacheProcess;
+import jcsp.helpers.FCClient;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
@@ -24,22 +26,61 @@ import jcsp.util.InfiniteBuffer;
  * @author erhannis
  */
 public class TestMain {
-    public static void main(String[] args) throws InterruptedException, IOException {
-        DataOwner dataOwner = new DataOwner();
 
-        Any2OneChannel<Advertisement> rxAdChannel = Channel.<Advertisement> any2one(new InfiniteBuffer<Advertisement>());
+    public static void main(String[] args) throws InterruptedException, IOException {
+        if (1==0) {
+            CSTimer timer = new CSTimer();
+            CacheProcess<String> cp = new CacheProcess<String>(10);
+            new ProcessManager(new Parallel(new CSProcess[]{
+                cp,
+                () -> {
+                    Thread.currentThread().setName("writer process");
+                    for (int i = 0; i < 10; i++) {
+                        cp.write(i + " bananas");
+                        System.out.println("wp " + i + " bananas");
+                        timer.sleep(1000);
+                    }
+                    cp.poison(10);
+                },
+                () -> {
+                    Thread.currentThread().setName("reader process 1");
+                    AltingChannelInput<String> aci = cp.register();
+                    while (true) {
+                        System.out.println("rp1 " + aci.read());
+                    }
+                },
+                () -> {
+                    Thread.currentThread().setName("reader process 2");
+                    AltingChannelInput<String> aci = cp.register();
+                    while (true) {
+                        System.out.println("rp2 " + aci.read());
+                    }
+                },
+                () -> {
+                    Thread.currentThread().setName("getreader process");
+                    FCClient<Void, String> cpg = cp.getFC;
+                    while (true) {
+                        System.out.println("grp " + cpg.call(null));
+                        timer.sleep(314);
+                    }
+                }
+            })).run();
+            if (1 == 1) {
+                return;
+            }
+        }
+        DataOwner dataOwner = new DataOwner();
+        
+        Any2OneChannel<Advertisement> rxAdChannel = Channel.<Advertisement>any2one(new InfiniteBuffer<Advertisement>());
         AltingChannelInput<Advertisement> rxAdIn = rxAdChannel.in();
         ChannelOutput<Advertisement> rxAdOut = rxAdChannel.out();
-
-        Any2OneChannel<Advertisement> txAdChannel = Channel.<Advertisement> any2one();
-        AltingChannelInput<Advertisement> txAdIn = txAdChannel.in();
-        ChannelOutput<Advertisement> txAdOut = txAdChannel.out();
         
         NodeRoster roster = new NodeRoster(rxAdIn);
         
-        new ProcessManager(new Parallel(new CSProcess[] {
+        new ProcessManager(new Parallel(new CSProcess[]{
+            mockUI(roster.adUpdatedOut.register()),
             roster,
-            new MulticastAdvertiser(dataOwner, rxAdOut, txAdIn),
+            new MulticastAdvertiser(dataOwner, rxAdOut, roster.adUpdatedOut.register()),
             () -> {
                 AltingChannelInput<Advertisement> rosterIn = roster.adUpdatedOut.register();
                 while (true) {
@@ -52,8 +93,8 @@ public class TestMain {
                 String id = UUID.randomUUID().toString();
                 while (true) {
                     Advertisement ad = new Advertisement(id, System.currentTimeMillis(), new ArrayList<Comm>());
-                    System.out.println("loop send");
-                    txAdOut.write(ad);
+                    System.out.println("loop send BROKEN");
+                    //txAdOut.write(ad);
                     timer.sleep(1000);
                 }
             },
@@ -62,5 +103,13 @@ public class TestMain {
             }
         })).start();
         Thread.sleep(100000);
+    }
+
+    private static CSProcess mockUI(Object... o) {
+        return new CSProcess() {
+            @Override
+            public void run() {
+            }
+        };
     }
 }

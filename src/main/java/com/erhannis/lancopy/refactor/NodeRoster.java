@@ -17,6 +17,7 @@ import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.Guard;
 import jcsp.lang.One2OneChannelSymmetricInt;
+import jcsp.lang.Parallel;
 import jcsp.lang.PoisonException;
 import jcsp.lang.ProcessManager;
 
@@ -27,7 +28,9 @@ import jcsp.lang.ProcessManager;
 public class NodeRoster implements CSProcess {
 
     public final SynchronousSplitter<Advertisement> adUpdatedOut;
-    private final AltingChannelInput<Advertisement> rxAdIn;
+    public final SynchronousSplitter<Summary> summaryUpdatedOut;
+    private final AltingChannelInput<Advertisement> adIn;
+    private final AltingChannelInput<Summary> summaryIn;
     private final AltingChannelInputInt joinIn;
     private final AltingChannelOutputInt joinOut;
 
@@ -38,10 +41,19 @@ public class NodeRoster implements CSProcess {
         }
     });
 
-    public NodeRoster(AltingChannelInput<Advertisement> rxAdIn) {
+    private FactoryHashMap<String, HashSet<Summary>> summarys = new FactoryHashMap<>(new Factory<String, HashSet<Summary>>() {
+        @Override
+        public HashSet<Summary> construct(String input) {
+            return new HashSet<Summary>();
+        }
+    });
+    
+    public NodeRoster(AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn) {
         this.adUpdatedOut = new SynchronousSplitter<>();
-        new ProcessManager(adUpdatedOut).start();
-        this.rxAdIn = rxAdIn;
+        this.summaryUpdatedOut = new SynchronousSplitter<>();
+        new ProcessManager(new Parallel(new CSProcess[]{adUpdatedOut, summaryUpdatedOut})).start();
+        this.adIn = adIn;
+        this.summaryIn = summaryIn;
 
         One2OneChannelSymmetricInt joinChannel = Channel.one2oneSymmetricInt();
         this.joinIn = joinChannel.in();
@@ -51,21 +63,36 @@ public class NodeRoster implements CSProcess {
     @Override
     public void run() {
         try {
-            Alternative alt = new Alternative(new Guard[]{rxAdIn, joinOut});
+            Alternative alt = new Alternative(new Guard[]{adIn, summaryIn, joinOut});
             while (true) {
                 switch (alt.fairSelect()) {
-                    case 0: // rxAdIn
-                        Advertisement ad = rxAdIn.read();
-                        HashSet<Advertisement> versions = ads.get(ad.id);
-                        Advertisement oldMax = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
-                        if (!versions.contains(ad)) {
-                            versions.add(ad);
-                            if (oldMax == null || ad.timestamp > oldMax.timestamp) {
-                                adUpdatedOut.write(ad);
+                    case 0: // adIn
+                        {
+                            Advertisement ad = adIn.read();
+                            HashSet<Advertisement> versions = ads.get(ad.id);
+                            Advertisement oldMax = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
+                            if (!versions.contains(ad)) {
+                                versions.add(ad);
+                                if (oldMax == null || ad.timestamp > oldMax.timestamp) {
+                                    adUpdatedOut.write(ad);
+                                }
                             }
+                            break;
                         }
-                        break;
-                    case 1: // joinOut
+                    case 1: // summaryIn
+                        {
+                            Summary summary = summaryIn.read();
+                            HashSet<Summary> versions = summarys.get(summary.id);
+                            Summary oldMax = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
+                            if (!versions.contains(summary)) {
+                                versions.add(summary);
+                                if (oldMax == null || summary.timestamp > oldMax.timestamp) {
+                                    summaryUpdatedOut.write(summary);
+                                }
+                            }
+                            break;
+                        }
+                    case 2: // joinOut
                         joinOut.write(0);
                         break;
                 }
@@ -73,7 +100,9 @@ public class NodeRoster implements CSProcess {
         } catch (PoisonException e) {
             int s = e.getStrength();
             adUpdatedOut.poison(s);
-            rxAdIn.poison(s);
+            summaryUpdatedOut.poison(s);
+            adIn.poison(s);
+            summaryIn.poison(s);
             joinOut.poison(s);
         }
     }
@@ -83,6 +112,17 @@ public class NodeRoster implements CSProcess {
         HashSet<Advertisement> roster = new HashSet<>();
         for (HashSet<Advertisement> versions : ads.values()) {
             Advertisement max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
+            roster.add(max);
+        }
+        joinIn.endRead();
+        return roster;
+    }
+
+    public synchronized HashSet<Summary> getSummaries() {
+        joinIn.startRead();
+        HashSet<Summary> roster = new HashSet<>();
+        for (HashSet<Summary> versions : summarys.values()) {
+            Summary max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
             roster.add(max);
         }
         joinIn.endRead();
