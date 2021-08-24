@@ -17,12 +17,15 @@ import java.net.UnknownHostException;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.JcspUtils;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
+import jcsp.lang.CSTimer;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.DisableableTimer;
 import jcsp.lang.Guard;
 import jcsp.lang.PoisonException;
 import jcsp.util.InfiniteBuffer;
@@ -42,6 +45,7 @@ public class MulticastAdvertiser implements CSProcess {
 
         public final int port;
         public final String address;
+        
         public final AltingChannelInput<byte[]> msgIn; //TODO byte[]?
         private final ChannelOutput<byte[]> msgOut;
 
@@ -50,7 +54,7 @@ public class MulticastAdvertiser implements CSProcess {
         }
 
         private MulticastReceiver(int port, String address, Any2OneChannel<byte[]> msgChannel) {
-            this(port, address, msgChannel.in(), msgChannel.out());
+            this(port, address, msgChannel.in(), JcspUtils.logDeadlock(msgChannel.out()));
         }
 
         public MulticastReceiver(int port, String address, ChannelOutput<byte[]> msgOut) {
@@ -128,6 +132,7 @@ public class MulticastAdvertiser implements CSProcess {
     }
 
     private final DataOwner dataOwner;
+    private final long rebroadcastInterval;
 
     private final MulticastReceiver mr;
     private final MulticastPublisher mp;
@@ -141,6 +146,8 @@ public class MulticastAdvertiser implements CSProcess {
         this.txAdIn = txAdIn;
         int port = (int) dataOwner.options.getOrDefault("Multicast.port", 12113);
         String address = (String) dataOwner.options.getOrDefault("Multicast.address", "234.119.187.64");
+        this.rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000), false);
+        dataOwner.errOnce("MulticastAdvertiser //TODO Deal with multiple interfaces?");
         this.mr = new MulticastReceiver(port, address);
         this.mp = new MulticastPublisher(port, address);
     }
@@ -148,9 +155,16 @@ public class MulticastAdvertiser implements CSProcess {
     @Override
     public void run() {
         AltingChannelInput<byte[]> multicastIn = mr.msgIn;
-        Alternative alt = new Alternative(new Guard[]{txAdIn, multicastIn});
+        DisableableTimer rebroadcastTimer = new DisableableTimer();
+        if (rebroadcastInterval < 0) {
+            rebroadcastTimer.turnOff();
+        } else {
+            rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
+        }
+        Alternative alt = new Alternative(new Guard[]{txAdIn, multicastIn, rebroadcastTimer});
         try {
             this.mr.start();
+            Advertisement lastAd = null;
             while (true) {
                 switch (alt.priSelect()) {
                     case 0: // txAdIn
@@ -158,6 +172,7 @@ public class MulticastAdvertiser implements CSProcess {
                         if (Objects.equals(ad.id, dataOwner.ID)) {
                             try {
                                 mp.multicast(dataOwner.serialize(ad));
+                                lastAd = ad; //TODO Should move to before?
                             } catch (IOException ex) {
                                 Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
                             }
@@ -178,6 +193,16 @@ public class MulticastAdvertiser implements CSProcess {
                             rxAdOut.write((Advertisement)o);
                         } else {
                             System.err.println("MA rx non-Advertisement!");
+                        }
+                        break;
+                    case 2: // rebroadcastTimer
+                        rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
+                        if (lastAd != null) {
+                            try {
+                                mp.multicast(dataOwner.serialize(lastAd));
+                            } catch (IOException ex) {
+                                Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
+                            }
                         }
                         break;
                 }

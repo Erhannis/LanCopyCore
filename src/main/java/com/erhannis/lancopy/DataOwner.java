@@ -8,6 +8,7 @@ package com.erhannis.lancopy;
 import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
+import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.components.OptionsFrame;
 import com.erhannis.mathnstuff.utils.Observable;
 import com.erhannis.mathnstuff.utils.ObservableMap;
@@ -24,6 +25,7 @@ import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -64,6 +66,7 @@ public class DataOwner {
 
         kryo.register(Advertisement.class);
         kryo.register(Comm.class);
+        kryo.register(Summary.class);
         kryo.register(ArrayList.class);
         UnmodifiableCollectionsSerializer.registerSerializers(kryo);
         //kryo.register(java.util.Collections.UnmodifiableRandomAccessList.class);
@@ -128,4 +131,12 @@ public class DataOwner {
         input.close();
         return o;
     }
+    
+    //TODO Not really a great place for this
+    private HashSet<String> msgs = new HashSet<>();
+    public void errOnce(String msg) {
+    if (msgs.add(msg)) {
+      System.err.println(msg);
+    }
+  }
 }

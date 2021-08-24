@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.UUID;
 import jcsp.helpers.CacheProcess;
 import jcsp.helpers.FCClient;
+import jcsp.helpers.JcspUtils;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
@@ -28,6 +29,29 @@ import jcsp.util.InfiniteBuffer;
 public class TestMain {
 
     public static void main(String[] args) throws InterruptedException, IOException {
+        if (1==0) {
+            CSTimer t = new CSTimer();
+            System.out.println(">>sleep 1000");
+            JcspUtils.logDeadlock(() -> {
+                t.sleep(1000);
+            });
+            System.out.println("<<sleep 1000");
+            System.out.println(">>sleep 5000");
+            JcspUtils.logDeadlock(() -> {
+                t.sleep(5000);
+            });
+            System.out.println("<<sleep 5000");
+            System.out.println(">>sleep 15000");
+            String r = JcspUtils.logDeadlock(() -> {
+                t.sleep(15000);
+                return "adsf";
+            });
+            System.out.println(r);
+            System.out.println("<<sleep 15000");
+            if (1==1) {
+                return;
+            }
+        }
         if (1==0) {
             CSTimer timer = new CSTimer();
             CacheProcess<String> cp = new CacheProcess<String>(10);
@@ -75,7 +99,9 @@ public class TestMain {
         AltingChannelInput<Advertisement> rxAdIn = rxAdChannel.in();
         ChannelOutput<Advertisement> rxAdOut = rxAdChannel.out();
         
-        NodeRoster roster = new NodeRoster(rxAdIn);
+        //TODO Maybe put the summary Call in the NodeRoster
+        //NodeRoster roster = new NodeRoster(rxAdIn, );
+        NodeRoster roster = null;
         
         new ProcessManager(new Parallel(new CSProcess[]{
             mockUI(roster.adUpdatedOut.register()),

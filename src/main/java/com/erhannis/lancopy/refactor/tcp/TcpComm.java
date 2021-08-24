@@ -12,6 +12,8 @@ import java.util.Objects;
  * @author erhannis
  */
 public class TcpComm {
+    public static final String TYPE = "TCP";
+    
     public final String address;
 
     public TcpComm(String address) {

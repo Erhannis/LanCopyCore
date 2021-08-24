@@ -11,8 +11,10 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.function.Supplier;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.FCServer;
+import jcsp.helpers.JcspUtils;
 import jcsp.helpers.SynchronousSplitter;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
@@ -147,7 +149,7 @@ public class NodeRoster implements CSProcess {
     }
 
     public synchronized HashSet<Advertisement> getAdvertisements() {
-        joinIn.startRead();
+        LD(joinIn::startRead);
         HashSet<Advertisement> roster = new HashSet<>();
         for (HashSet<Advertisement> versions : ads.values()) {
             Advertisement max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
@@ -158,7 +160,7 @@ public class NodeRoster implements CSProcess {
     }
 
     public synchronized HashSet<Summary> getSummaries() {
-        joinIn.startRead();
+        LD(joinIn::startRead);
         HashSet<Summary> roster = new HashSet<>();
         for (HashSet<Summary> versions : summarys.values()) {
             Summary max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
@@ -166,5 +168,9 @@ public class NodeRoster implements CSProcess {
         }
         joinIn.endRead();
         return roster;
+    }
+    
+    private static <T> T LD(Supplier<T> r) {
+        return JcspUtils.logDeadlock(r);
     }
 }
