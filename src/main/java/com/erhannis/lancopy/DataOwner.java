@@ -29,6 +29,7 @@ import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
+import okhttp3.OkHttpClient;
 
 /**
  *
@@ -51,6 +52,7 @@ public class DataOwner {
 
     public final Options options;
     public final Kryo kryo = new Kryo();
+    public final OkHttpClient ohClient = new OkHttpClient();
 
     public DataOwner() {
         localData.subscribe((data) -> {

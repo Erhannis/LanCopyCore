@@ -28,11 +28,11 @@ public class WsClient extends WebSocketListener {
   private final ConcurrentHashMap<NodeInfo, WebSocket> info2socket = new ConcurrentHashMap<>();
   private final OkHttpClient client = new OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build();
 
+  private static final int NORMAL_CLOSURE_STATUS = 1000;
+  
   public WsClient(DataOwner dataOwner) {
     this.dataOwner = dataOwner;
   }
-
-  private static final int NORMAL_CLOSURE_STATUS = 1000;
 
   @Override
   public void onOpen(WebSocket webSocket, Response response) {
