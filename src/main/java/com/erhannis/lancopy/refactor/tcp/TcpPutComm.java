@@ -6,7 +6,6 @@
 package com.erhannis.lancopy.refactor.tcp;
 
 import com.erhannis.lancopy.DataOwner;
-import com.erhannis.lancopy.NodeInfo;
 import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;

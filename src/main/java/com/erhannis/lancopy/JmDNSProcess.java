@@ -36,31 +36,9 @@ import xyz.gianlu.zeroconf.Zeroconf;
 public class JmDNSProcess {
   private static class LCListener implements ServiceListener {
     private final DataOwner dataOwner;
-    private final WsClient wsClient;
 
-    public LCListener(DataOwner dataOwner, WsClient wsClient) {
+    public LCListener(DataOwner dataOwner) {
       this.dataOwner = dataOwner;
-      this.wsClient = wsClient;
-      this.dataOwner.remoteNodes.subscribe((Change<String, NodeInfo> change) -> {
-        //TODO This seems a little rickety to me
-        if (change.wasRemoved) {
-          if (change.wasAdded) {
-            // Value swapped
-            if (Objects.equals(change.valueRemoved.id, change.valueAdded.id)) {
-              //TODO Yeaaah, my instincts say this thing needs looked at, bleh, something something infinite loop OR missed opportunities
-              if (!Objects.equals(change.valueRemoved.url, change.valueAdded.url) && change.valueAdded.active == NodeInfo.State.ACTIVE) {
-                // URL has changed
-                //TODO Seems like this could result in a subsequent "connection closed" msg from the client, on the first URL, messing up the apparent state.
-                wsClient.addNode(change.valueAdded);
-              }
-            }
-          } else {
-            //TODO Removed outright.  Do something?
-          }
-        } else if (change.wasAdded) {
-          wsClient.addNode(change.valueAdded);
-        }
-      });
     }
 
     @Override
@@ -80,14 +58,12 @@ public class JmDNSProcess {
       System.out.println("Service resolved: " + event.getInfo());
       if (!Objects.equals(event.getName(), dataOwner.ID.toString())) {
         //TODO The address thing is kinda janky
-        dataOwner.observedNode(new NodeInfo(event.getName(), event.getInfo().getHostAddress()+":"+event.getInfo().getPort(), "???", NodeInfo.State.ACTIVE));
+        //dataOwner.observedNode(new NodeInfo(event.getName(), event.getInfo().getHostAddress()+":"+event.getInfo().getPort(), "???", NodeInfo.State.ACTIVE));
       }
     }
   }
 
   private final DataOwner dataOwner;
-  private final WsServer wsServer;
-  private final WsClient wsClient;
 
   private final JmDNS jmdns;
   private final Zeroconf zeroconf;
@@ -95,37 +71,6 @@ public class JmDNSProcess {
 
   private JmDNSProcess(DataOwner dataOwner) {
     this.dataOwner = dataOwner;
-    this.wsServer = new WsServer(dataOwner);
-    this.wsClient = new WsClient(dataOwner);
-
-    Spark.port(0);
-
-//    try {
-//      //TODO //SECURITY Change according to settings
-//      dataOwner.localData.set(new TextData((String) Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor)));
-//    } catch (UnsupportedFlavorException ex) {
-//      Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
-//    } catch (IOException ex) {
-//      Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
-//    }
-
-    Spark.webSocket("/monitor", wsServer);
-    Spark.get("/data", (request, response) -> { //TODO //SECURITY Note - this DOES mean your clipboard is always accessible by anyone.  OTOH, this is be design, until we have some form of authentication.
-      //TODO Support other flavors
-      Data data = dataOwner.localData.get();
-      response.type(data.getMime());
-      return data.serialize();
-    });
-    //TODO Support files
-    Spark.awaitInitialization();
-    dataOwner.PORT = Spark.port(); // There's a brief race condition, here, btw, if endpoint is called before this line
-    System.out.println("JmDNSProcess " + dataOwner.ID + " starting on port " + dataOwner.PORT);
-
-    //TODO Should it be the wsServer that registers itself??  Unsure.
-    dataOwner.localSummary.subscribe((summary) -> {
-      System.out.println("LS: " + summary);
-      wsServer.broadcast(summary);
-    });
 
     Zeroconf zeroconf0 = null;
     Service zcService0 = null;
@@ -135,7 +80,9 @@ public class JmDNSProcess {
                .setUseIpv6(false)
                .addAllNetworkInterfaces();
 
-      zcService0 = new Service(dataOwner.ID, "lancopy", dataOwner.PORT);
+      if (1==1) throw new RuntimeException("//TODO BROKEN");
+      int PORT = -1;
+      zcService0 = new Service(dataOwner.ID, "lancopy", PORT);
       zeroconf0.announce(zcService0);
     } catch (IOException ex) {
       Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
@@ -148,7 +95,7 @@ public class JmDNSProcess {
       // Create a JmDNS instance
       jmdns0 = JmDNS.create(InetAddress.getLocalHost());
 
-      jmdns0.addServiceListener("_lancopy._tcp.local.", new LCListener(dataOwner, wsClient));
+      jmdns0.addServiceListener("_lancopy._tcp.local.", new LCListener(dataOwner));
     } catch (IOException e) {
       System.out.println(e.getMessage());
     }
@@ -168,7 +115,9 @@ public class JmDNSProcess {
 
   public Data pullFromNode(String id) throws IOException {
     //TODO Janky addressing, again
-    Request request = new Request.Builder().url("http://"+dataOwner.remoteNodes.get(id).url+"/data").build();
+    if (1==1) throw new RuntimeException("//TODO BROKEN");
+    String addr = id;
+    Request request = new Request.Builder().url("http://"+id+"/data").build();
     try (Response response = client.newCall(request).execute()) {
       switch (response.header("content-type")) {
         case "text/plain":
@@ -185,7 +134,6 @@ public class JmDNSProcess {
 
   public void shutdown() {
     jmdns.unregisterAllServices();
-    wsClient.shutdown();
     zeroconf.unannounce(zcService);
     zeroconf.close();
   }

@@ -38,72 +38,7 @@ import jcsp.util.InfiniteBuffer;
  * @author erhannis
  */
 public class TestMain {
-
-    public static void main(String[] args) throws InterruptedException, IOException {
-        if (1==0) {
-            CSTimer t = new CSTimer();
-            System.out.println(">>sleep 1000");
-            JcspUtils.logDeadlock(() -> {
-                t.sleep(1000);
-            });
-            System.out.println("<<sleep 1000");
-            System.out.println(">>sleep 5000");
-            JcspUtils.logDeadlock(() -> {
-                t.sleep(5000);
-            });
-            System.out.println("<<sleep 5000");
-            System.out.println(">>sleep 15000");
-            String r = JcspUtils.logDeadlock(() -> {
-                t.sleep(15000);
-                return "adsf";
-            });
-            System.out.println(r);
-            System.out.println("<<sleep 15000");
-            if (1==1) {
-                return;
-            }
-        }
-        if (1==0) {
-            CSTimer timer = new CSTimer();
-            CacheProcess<String> cp = new CacheProcess<String>(10);
-            new ProcessManager(new Parallel(new CSProcess[]{
-                cp,
-                () -> {
-                    Thread.currentThread().setName("writer process");
-                    for (int i = 0; i < 10; i++) {
-                        cp.write(i + " bananas");
-                        System.out.println("wp " + i + " bananas");
-                        timer.sleep(1000);
-                    }
-                    cp.poison(10);
-                },
-                () -> {
-                    Thread.currentThread().setName("reader process 1");
-                    AltingChannelInput<String> aci = cp.register();
-                    while (true) {
-                        System.out.println("rp1 " + aci.read());
-                    }
-                },
-                () -> {
-                    Thread.currentThread().setName("reader process 2");
-                    AltingChannelInput<String> aci = cp.register();
-                    while (true) {
-                        System.out.println("rp2 " + aci.read());
-                    }
-                },
-                () -> {
-                    Thread.currentThread().setName("getreader process");
-                    FCClient<Void, String> cpg = cp.getFC;
-                    while (true) {
-                        System.out.println("grp " + cpg.call(null));
-                        timer.sleep(314);
-                    }
-                }
-            })).run();
-            if (1 == 1) {
-                return;
-            }
-        }
+    public static UiInterface startNet() throws InterruptedException, IOException {
         DataOwner dataOwner = new DataOwner();
         
         Any2OneChannel<Advertisement> rxAdChannel = Channel.<Advertisement>any2one(new InfiniteBuffer<>());
@@ -150,11 +85,31 @@ public class TestMain {
             new MulticastAdvertiser(dataOwner, rxAdOut, adUpdatedSplitter.register()),
             new TcpGetComm(dataOwner, subscribeIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
             new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
-            new AdGenerator(dataOwner, rxAdOut, commsIn),
-            mockUI(dataOwner, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), commStatusIn, newDataOut, subscribeOut, dataCall.getClient())
-        })).run();
+            new AdGenerator(dataOwner, rxAdOut, commsIn)
+        })).start();
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), commStatusIn, newDataOut, subscribeOut, dataCall.getClient());
     }
 
+    public static class UiInterface {
+        public final DataOwner dataOwner;
+        public final AltingChannelInput<Advertisement> adIn;
+        public final AltingChannelInput<Summary> summaryIn;
+        public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
+        public final ChannelOutput<Data> newDataOut;
+        public final ChannelOutput<List<Comm>> subscribeOut;
+        public final FCClient<List<Comm>, Pair<String, InputStream>> dataCall;
+
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall) {
+            this.dataOwner = dataOwner;
+            this.adIn = adIn;
+            this.summaryIn = summaryIn;
+            this.commStatusIn = commStatusIn;
+            this.newDataOut = newDataOut;
+            this.subscribeOut = subscribeOut;
+            this.dataCall = dataCall;
+        }
+    }
+    
     private static CSProcess mockUI(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm,Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall) {
         return new CSProcess() {
             @Override
