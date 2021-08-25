@@ -6,11 +6,10 @@
 package com.erhannis.lancopy.refactor;
 
 import com.erhannis.mathnstuff.MeUtils;
-import java.util.Collection;
 import java.util.Collections;
-import java.util.HashMap;
 import java.util.List;
 import java.util.Objects;
+import java.util.stream.Collectors;
 
 /**
  *
@@ -24,7 +23,7 @@ public class Advertisement {
     public Advertisement(String id, long timestamp, List<Comm> comms) {
         this.id = id;
         this.timestamp = timestamp;
-        this.comms = Collections.unmodifiableList(comms);
+        this.comms = Collections.unmodifiableList(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
     }
     
     private Advertisement() {

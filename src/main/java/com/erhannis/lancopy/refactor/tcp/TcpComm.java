@@ -5,26 +5,31 @@
  */
 package com.erhannis.lancopy.refactor.tcp;
 
+import com.erhannis.lancopy.refactor.Advertisement;
+import com.erhannis.lancopy.refactor.Comm;
 import java.util.Objects;
 
 /**
  *
  * @author erhannis
  */
-public class TcpComm {
+public class TcpComm extends Comm {
     public static final String TYPE = "TCP";
     
     public final String address;
 
-    public TcpComm(String address) {
+    public TcpComm(Advertisement owner, String address) {
+        super(owner, TYPE);
         this.address = address;
     }
 
+    private TcpComm() {
+        this(null, null);
+    }
+    
     @Override
     public boolean equals(Object obj) {
-        if (obj == null || !(obj instanceof TcpComm)) {
-            return false;
-        }
+        if (!super.equals(obj)) return false;
         TcpComm o = (TcpComm)obj;
         if (!Objects.equals(this.address, o.address)) {
             return false;
@@ -34,11 +39,16 @@ public class TcpComm {
 
     @Override
     public int hashCode() {
-        return Objects.hash(address);
+        return Objects.hash(super.hashCode(), address);
     }
 
     @Override
     public String toString() {
-        return address;
+        return super.toString()+"{"+address+"}";
+    }
+
+    @Override
+    public Comm copyToOwner(Advertisement owner) {
+        return new TcpComm(owner, this.address);
     }
 }

@@ -11,22 +11,27 @@ import java.util.Objects;
  *
  * @author erhannis
  */
-public class Comm {
+public abstract class Comm {
+    public final Advertisement owner;
     public final String type;
-    public final Object data;
 
-    public Comm(String type, Object data) {
+    public Comm(Advertisement owner, String type) {
+        this.owner = owner;
         this.type = type;
-        this.data = data;
     }
 
+    private Comm() {
+        this(null, null);
+    }
+    
     @Override
     public boolean equals(Object obj) {
-        if (obj == null || !(obj instanceof Comm)) {
+        if (obj == null || !(obj.getClass() != this.getClass())) {
             return false;
         }
         Comm o = (Comm)obj;
-        if (!Objects.equals(this.type, o.type) || !Objects.deepEquals(this.data, o.data)) {
+        // Can't recursively check owner, else infinite loop
+        if (!Objects.equals(this.type, o.type) || !Objects.equals(this.owner.id, o.owner.id)) {
             return false;
         }
         return true;
@@ -34,11 +39,13 @@ public class Comm {
     
     @Override
     public int hashCode() {
-        return Objects.hash(type, data);
+        return Objects.hash(type, owner.id);
     }
 
     @Override
     public String toString() {
-        return "Comm{"+type+","+data+"}";
+        return "Comm{"+type+"}"; //TODO Include owner id?
     }
+    
+    public abstract Comm copyToOwner(Advertisement owner);
 }

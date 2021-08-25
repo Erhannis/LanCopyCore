@@ -24,6 +24,7 @@ import jcsp.lang.AltingFCServer;
 import jcsp.lang.AltingFunctionChannel;
 import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
+import jcsp.lang.ChannelOutput;
 import jcsp.lang.Guard;
 import jcsp.lang.One2OneChannelSymmetricInt;
 import jcsp.lang.Parallel;
@@ -34,13 +35,12 @@ import jcsp.lang.ProcessManager;
  *
  * @author erhannis
  */
-public class NodeRoster implements CSProcess {
+public class NodeTracker implements CSProcess {
 
-    public final SynchronousSplitter<Advertisement> adUpdatedOut;
-    public final SynchronousSplitter<Summary> summaryUpdatedOut;
-    private final FCClient<String, Advertisement> adCall;
-    private final FCClient<Void, List<Advertisement>> rosterCall;
+    private final ChannelOutput<Advertisement> adUpdatedOut;
+    private final ChannelOutput<Summary> summaryUpdatedOut;
     private final AltingFCServer<String, Advertisement> adCallServer;
+    private final AltingFCServer<String, Summary> summaryCallServer;
     private final AltingFCServer<Void, List<Advertisement>> rosterCallServer;
     private final AltingChannelInput<Advertisement> adIn;
     private final AltingChannelInput<Summary> summaryIn;
@@ -61,10 +61,9 @@ public class NodeRoster implements CSProcess {
         }
     });
     
-    public NodeRoster(AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn) {
-        this.adUpdatedOut = new SynchronousSplitter<>();
-        this.summaryUpdatedOut = new SynchronousSplitter<>();
-        new ProcessManager(new Parallel(new CSProcess[]{adUpdatedOut, summaryUpdatedOut})).start();
+    public NodeTracker(ChannelOutput<Advertisement> adUpdatedOut, ChannelOutput<Summary> summaryUpdatedOut, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingFCServer<String, Advertisement> adCallServer, AltingFCServer<String, Summary> summaryCallServer, AltingFCServer<Void, List<Advertisement>> rosterCallServer) {
+        this.adUpdatedOut = adUpdatedOut;
+        this.summaryUpdatedOut = summaryUpdatedOut;        
         this.adIn = adIn;
         this.summaryIn = summaryIn;
 
@@ -72,19 +71,15 @@ public class NodeRoster implements CSProcess {
         this.joinIn = joinChannel.in();
         this.joinOut = joinChannel.out();
         
-        AltingFunctionChannel<String, Advertisement> adCall = new AltingFunctionChannel<>();
-        this.adCall = adCall;
-        this.adCallServer = adCall;
-
-        AltingFunctionChannel<Void, List<Advertisement>> rosterCall = new AltingFunctionChannel<>();
-        this.rosterCall = rosterCall;
-        this.rosterCallServer = rosterCall;
+        this.adCallServer = adCallServer;
+        this.summaryCallServer = summaryCallServer;
+        this.rosterCallServer = rosterCallServer;
     }
 
     @Override
     public void run() {
         try {
-            Alternative alt = new Alternative(new Guard[]{adIn, summaryIn, joinOut, adCallServer, rosterCallServer});
+            Alternative alt = new Alternative(new Guard[]{adIn, summaryIn, joinOut, adCallServer, summaryCallServer, rosterCallServer});
             while (true) {
                 switch (alt.fairSelect()) {
                     case 0: // adIn
@@ -124,7 +119,15 @@ public class NodeRoster implements CSProcess {
                         adCallServer.endRead(max);
                         break;
                     }
-                    case 4: // rosterCallServer
+                    case 4: // summaryCallServer
+                    {
+                        String id = summaryCallServer.startRead();
+                        HashSet<Summary> versions = summarys.get(id);
+                        Summary max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
+                        summaryCallServer.endRead(max);
+                        break;
+                    }
+                    case 5: // rosterCallServer
                     {
                         rosterCallServer.startRead();
                         ArrayList<Advertisement> roster = new ArrayList<>();

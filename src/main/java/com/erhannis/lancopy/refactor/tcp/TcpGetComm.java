@@ -6,30 +6,27 @@
 package com.erhannis.lancopy.refactor.tcp;
 
 import com.erhannis.lancopy.DataOwner;
-import com.erhannis.lancopy.NodeInfo;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
-import java.util.logging.Level;
-import java.util.logging.Logger;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.AltingFCServer;
-import jcsp.lang.AltingFunctionChannel;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.Guard;
-import jcsp.lang.PoisonException;
+import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -52,14 +49,14 @@ public class TcpGetComm implements CSProcess {
 
         private final DataOwner dataOwner;
 
-        private final ConcurrentHashMap<WebSocket, Advertisement> socket2ad = new ConcurrentHashMap<>();
+        private final ConcurrentHashMap<WebSocket, TcpComm> socket2comm = new ConcurrentHashMap<>();
         private final OkHttpClient client = new OkHttpClient.Builder().pingInterval(15, TimeUnit.SECONDS).build();
 
         private final ChannelOutput<Summary> internalSummaryOut;
         private final ChannelOutput<List<Advertisement>> internalRosterOut;
-        private final ChannelOutput<Pair<Advertisement, Boolean>> internalStatusOut;
+        private final ChannelOutput<Pair<Comm, Boolean>> internalStatusOut;
 
-        public WsClient(DataOwner dataOwner, ChannelOutput<Summary> internalSummaryOut, ChannelOutput<List<Advertisement>> internalRosterOut, ChannelOutput<Pair<Advertisement, Boolean>> internalStatusOut) {
+        public WsClient(DataOwner dataOwner, ChannelOutput<Summary> internalSummaryOut, ChannelOutput<List<Advertisement>> internalRosterOut, ChannelOutput<Pair<Comm, Boolean>> internalStatusOut) {
             this.dataOwner = dataOwner;
             this.internalSummaryOut = internalSummaryOut;
             this.internalRosterOut = internalRosterOut;
@@ -69,6 +66,8 @@ public class TcpGetComm implements CSProcess {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             System.out.println("CWS Open");
+            final TcpComm comm = socket2comm.get(webSocket);
+            internalStatusOut.write(Pair.gen(comm, true));
         }
 
         @Override
@@ -98,31 +97,30 @@ public class TcpGetComm implements CSProcess {
         public void onClosing(WebSocket webSocket, int code, String reason) {
             webSocket.close(NORMAL_CLOSURE_STATUS, null); //TODO Should this?
             System.out.println("CWS Closing : " + code + " / " + reason);
-            Advertisement ad = socket2ad.get(webSocket);
+            TcpComm comm = socket2comm.get(webSocket);
             //dataOwner.observedNode(new NodeInfo(info.id, info.url, info.summary, NodeInfo.State.INACTIVE));
-            internalStatusOut.write(Pair.gen(ad, false));
+            internalStatusOut.write(Pair.gen(comm, false));
         }
 
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             System.err.println("CWS Error : " + t.getMessage());
-            Advertisement ad = socket2ad.get(webSocket);
+            TcpComm comm = socket2comm.get(webSocket);
             //dataOwner.observedNode(new NodeInfo(info.id, info.url, info.summary, NodeInfo.State.INACTIVE));
-            internalStatusOut.write(Pair.gen(ad, false));
+            internalStatusOut.write(Pair.gen(comm, false));
         }
 
-        public void connect(Advertisement ad, TcpComm comm) {
-            System.out.println("CWS addNode " + ad.id + " via " + comm);
+        public void connect(TcpComm comm) {
+            System.out.println("CWS addNode " + comm.owner.id + " via " + comm);
             dataOwner.errOnce("WsClient //TODO Split websocket channels?");
             WebSocket ws = client.newWebSocket(new Request.Builder().url(comm.address + "/ws/updates").build(), this);
-            socket2ad.put(ws, ad);
-            internalStatusOut.write(Pair.gen(ad, true));
+            socket2comm.put(ws, comm);
             // For availability robustness, self-report to server
             //ws.send(dataOwner.ID + ";" + dataOwner.PORT + ";" + dataOwner.localSummary.get());
         }
 
         public void shutdown() {
-            for (WebSocket ws : socket2ad.keySet()) {
+            for (WebSocket ws : socket2comm.keySet()) {
                 ws.close(NORMAL_CLOSURE_STATUS, "Shutting down");
             }
             client.dispatcher().executorService().shutdown();
@@ -133,12 +131,12 @@ public class TcpGetComm implements CSProcess {
 
     private final AltingChannelInput<Advertisement> subscribeIn;
     private final ChannelOutput<Summary> summaryOut;
-    private final ChannelOutput<List<Advertisement>> rosterOut;
+    private final ChannelOutput<Advertisement> rosterOut;
     private final AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall;
     private final FCClient<String, Advertisement> adCall;
-    private final ChannelOutput<Pair<Advertisement, Boolean>> statusOut;
+    private final ChannelOutput<Pair<Comm, Boolean>> statusOut;
 
-    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<Advertisement> subscribeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<List<Advertisement>> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Advertisement, Boolean>> statusOut) {
+    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<Advertisement> subscribeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
         this.dataOwner = dataOwner;
         this.subscribeIn = subscribeIn;
         this.summaryOut = summaryOut;
@@ -154,13 +152,13 @@ public class TcpGetComm implements CSProcess {
         
         Any2OneChannel<Summary> internalSummaryChannel = Channel.<Summary>any2one();
         Any2OneChannel<List<Advertisement>> internalRosterChannel = Channel.<List<Advertisement>>any2one();
-        Any2OneChannel<Pair<Advertisement, Boolean>> internalStatusChannel = Channel.<Pair<Advertisement, Boolean>>any2one();
+        Any2OneChannel<Pair<Comm, Boolean>> internalStatusChannel = Channel.<Pair<Comm, Boolean>>any2one();
 
         WsClient wc = new WsClient(dataOwner, JcspUtils.logDeadlock(internalSummaryChannel.out()), JcspUtils.logDeadlock(internalRosterChannel.out()), JcspUtils.logDeadlock(internalStatusChannel.out()));
 
         AltingChannelInput<Summary> internalSummaryIn = internalSummaryChannel.in();
         AltingChannelInput<List<Advertisement>> internalRosterIn = internalRosterChannel.in();
-        AltingChannelInput<Pair<Advertisement, Boolean>> internalStatusIn = internalStatusChannel.in();
+        AltingChannelInput<Pair<Comm, Boolean>> internalStatusIn = internalStatusChannel.in();
 
         // Fetch process
         Alternative alt = new Alternative(new Guard[]{dataCall, subscribeIn, internalSummaryIn, internalRosterIn, internalStatusIn});
@@ -176,7 +174,7 @@ public class TcpGetComm implements CSProcess {
                             //TODO Why did I decide to do it this way?
                             if (TcpComm.TYPE.equals(comm.type)) {
                                 try {
-                                    Request request = new Request.Builder().url(((TcpComm) comm.data).address + "/get/data").build();
+                                    Request request = new Request.Builder().url(((TcpComm) comm).address + "/get/data").build();
                                     try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                         result = Pair.gen(response.header("content-type"), response.body().byteStream());
                                         // If work:
@@ -199,11 +197,11 @@ public class TcpGetComm implements CSProcess {
                         for (Comm comm : ad.comms) {
                             if (TcpComm.TYPE.equals(comm.type)) {
                                 try {
-                                    wc.connect(ad, (TcpComm) comm.data);
+                                    wc.connect((TcpComm) comm);
                                     //TODO Don't automatically do this?  Have main request it?
                                     new ProcessManager(() -> {
                                         byte[] ladBytes = dataOwner.serialize(adCall.call(dataOwner.ID));
-                                        Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url(((TcpComm) comm.data).address + "/post/advertisement").build();
+                                        Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url(((TcpComm) comm).address + "/post/advertisement").build();
                                         try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                             //TODO Do something?
                                         } catch (IOException e) {
@@ -229,7 +227,11 @@ public class TcpGetComm implements CSProcess {
                     }
                     case 3: // internalRosterIn
                     {
-                        rosterOut.write(internalRosterIn.read());
+                        List<Advertisement> roster = internalRosterIn.read();
+                        //TODO Compactify?  Tracker might be more efficient that way.  Maybe.
+                        for (Advertisement ad : roster) {
+                            rosterOut.write(ad);
+                        }
                         break;
                     }
                     case 4: // internalStatusIn

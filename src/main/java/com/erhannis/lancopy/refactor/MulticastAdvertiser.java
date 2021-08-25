@@ -146,7 +146,7 @@ public class MulticastAdvertiser implements CSProcess {
         this.txAdIn = txAdIn;
         int port = (int) dataOwner.options.getOrDefault("Multicast.port", 12113);
         String address = (String) dataOwner.options.getOrDefault("Multicast.address", "234.119.187.64");
-        this.rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000), false);
+        this.rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L), false);
         dataOwner.errOnce("MulticastAdvertiser //TODO Deal with multiple interfaces?");
         this.mr = new MulticastReceiver(port, address);
         this.mp = new MulticastPublisher(port, address);

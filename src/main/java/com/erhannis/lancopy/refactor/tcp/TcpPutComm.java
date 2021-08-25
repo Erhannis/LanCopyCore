@@ -54,12 +54,14 @@ public class TcpPutComm implements CSProcess {
         private final DataOwner dataOwner;
 
         private final FCClient<String, Summary> summaryCall;
+        private final FCClient<Void, List<Advertisement>> rosterCall;
         
         private static final Queue<Session> sessions = new ConcurrentLinkedQueue<>();
 
-        public WsServer(DataOwner dataOwner, FCClient<String, Summary> summaryCall) {
+        public WsServer(DataOwner dataOwner, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
             this.dataOwner = dataOwner;
             this.summaryCall = summaryCall;
+            this.rosterCall = rosterCall;
         }
 
         @OnWebSocketConnect
@@ -70,6 +72,13 @@ public class TcpPutComm implements CSProcess {
                 Summary summary = summaryCall.call(dataOwner.ID);
                 byte[] sbytes = dataOwner.serialize(summary);
                 session.getRemote().sendBytes(ByteBuffer.wrap(sbytes));
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+            try {
+                List<Advertisement> roster = rosterCall.call(null);
+                byte[] rbytes = dataOwner.serialize(roster);
+                session.getRemote().sendBytes(ByteBuffer.wrap(rbytes));
             } catch (Throwable t) {
                 t.printStackTrace();
             }
@@ -110,13 +119,13 @@ public class TcpPutComm implements CSProcess {
 
     private final ChannelOutput<List<Comm>> commsOut; //TODO Support changes?  Removals?
     private final ChannelOutput<Advertisement> rxAdOut;
-    private final AltingChannelInput<List<Advertisement>> txRosterIn;
+    private final AltingChannelInput<Advertisement> txRosterIn;
     private final AltingChannelInput<Summary> txLSummaryIn;
     private final FCClient<Void, Data> ldataCall;
     private final FCClient<String, Summary> summaryCall;
     private final FCClient<Void, List<Advertisement>> rosterCall;
 
-    public TcpPutComm(DataOwner dataOwner, ChannelOutput<List<Comm>> commsOut, ChannelOutput<Advertisement> rxAdOut, AltingChannelInput<List<Advertisement>> txRosterIn, AltingChannelInput<Summary> txLSummaryIn, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
+    public TcpPutComm(DataOwner dataOwner, ChannelOutput<List<Comm>> commsOut, ChannelOutput<Advertisement> rxAdOut, AltingChannelInput<Advertisement> txRosterIn, AltingChannelInput<Summary> txLSummaryIn, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
         this.dataOwner = dataOwner;
         this.commsOut = commsOut;
         this.rxAdOut = rxAdOut;
@@ -130,11 +139,12 @@ public class TcpPutComm implements CSProcess {
     @Override
     public void run() {
         try {
-            WsServer wsServer = new WsServer(dataOwner, summaryCall);
+            WsServer wsServer = new WsServer(dataOwner, summaryCall, rosterCall);
             
             //TODO Split websocket channels?
             //TODO Hmm, I've kinda failed my usual thing of insulating inner processes from outer processes
             //TODO Not sure you can have more than one Spark server, so that might complicate composition
+            Spark.port(0);
             Spark.webSocket("/ws/updates", wsServer);
             Spark.post("post/advertisement", (request, response) -> {
                 //MAYBE Check mime type?  It's not really necessary....
@@ -160,7 +170,7 @@ public class TcpPutComm implements CSProcess {
             dataOwner.errOnce("TcpPutComm //TODO Deal with interface changes?");
             ArrayList<Comm> newComms = new ArrayList<>();
             for (InetAddress addr : MeUtils.listAllInterfaceAddresses()) {
-                newComms.add(new Comm("", new TcpComm(addr.getHostAddress() + ":" + port)));
+                newComms.add(new TcpComm(null, addr.getHostAddress() + ":" + port));
             }
             commsOut.write(newComms);
 
@@ -168,7 +178,7 @@ public class TcpPutComm implements CSProcess {
             while (true) {
                 switch (alt.priSelect()) {
                     case 0: // txRosterIn
-                        List<Advertisement> roster = txRosterIn.read();
+                        Advertisement roster = txRosterIn.read();
                         wsServer.broadcast(dataOwner.serialize(roster));
                         break;
                     case 1: // txLSummaryIn
