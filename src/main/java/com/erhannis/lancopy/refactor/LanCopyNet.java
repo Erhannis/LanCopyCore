@@ -53,7 +53,7 @@ public class LanCopyNet {
         AltingChannelInput<Data> newDataIn = newDataChannel.in();
         ChannelOutput<Data> newDataOut = JcspUtils.logDeadlock(newDataChannel.out());
 
-        Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one();
+        Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one(new InfiniteBuffer<>());
         AltingChannelInput<List<Comm>> subscribeIn = subscribeChannel.in();
         ChannelOutput<List<Comm>> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
 
