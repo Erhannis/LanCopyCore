@@ -175,7 +175,8 @@ public class TcpGetComm implements CSProcess {
                             if (TcpComm.TYPE.equals(comm.type)) {
                                 try {
                                     Request request = new Request.Builder().url("http://" + ((TcpComm) comm).address + "/get/data").build();
-                                    try (Response response = dataOwner.ohClient.newCall(request).execute()) {
+                                    try {
+                                        Response response = dataOwner.ohClient.newCall(request).execute();
                                         result = Pair.gen(response.header("content-type"), response.body().byteStream());
                                         // If work:
                                         break;

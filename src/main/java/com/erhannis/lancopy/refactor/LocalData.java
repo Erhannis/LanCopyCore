@@ -7,6 +7,7 @@ package com.erhannis.lancopy.refactor;
 
 import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.data.Data;
+import java.util.Objects;
 import jcsp.helpers.FCServer;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
@@ -41,11 +42,14 @@ public class LocalData implements CSProcess {
             while (true) {
                 switch (alt.priSelect()) {
                     case 0: // dataIn
-                        data = dataIn.read();
-                        String summary = data.toString();
-                        int summaryLength = (int) dataOwner.options.getOrDefault("summary_length", 100);
-                        summary = summary.substring(0, Math.min(summary.length(), summaryLength));
-                        summaryOut.write(new Summary(dataOwner.ID, System.currentTimeMillis(), summary));
+                        Data newData = dataIn.read();
+                        if (!Objects.equals(data, newData)) {
+                            data = newData;
+                            String summary = data.toString();
+                            int summaryLength = (int) dataOwner.options.getOrDefault("summary_length", 100);
+                            summary = summary.substring(0, Math.min(summary.length(), summaryLength));
+                            summaryOut.write(new Summary(dataOwner.ID, System.currentTimeMillis(), summary));
+                        }
                         break;
                     case 1: // dataFC
                         dataFC.startRead();

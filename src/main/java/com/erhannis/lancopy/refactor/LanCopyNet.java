@@ -37,7 +37,7 @@ import jcsp.util.InfiniteBuffer;
  *
  * @author erhannis
  */
-public class TestMain {
+public class LanCopyNet {
     public static UiInterface startNet() throws InterruptedException, IOException {
         DataOwner dataOwner = new DataOwner();
         
@@ -69,25 +69,25 @@ public class TestMain {
         SynchronousSplitter<Advertisement> adUpdatedSplitter = new SynchronousSplitter<>();
         SynchronousSplitter<Summary> summaryUpdatedSplitter = new SynchronousSplitter<>();
         
-        AltingFunctionChannel<String, Advertisement> adCall = new AltingFunctionChannel<>();
-        AltingFunctionChannel<List<Comm>, Pair<String, InputStream>> dataCall = new AltingFunctionChannel<>();
-        AltingFunctionChannel<String, Summary> summaryCall = new AltingFunctionChannel<>();
-        AltingFunctionChannel<Void, List<Advertisement>> rosterCall = new AltingFunctionChannel<>();
-        AltingFunctionChannel<Void, Data> localDataCall = new AltingFunctionChannel<>();
+        AltingFunctionChannel<String, Advertisement> adCall = new AltingFunctionChannel<>(true);
+        AltingFunctionChannel<List<Comm>, Pair<String, InputStream>> dataCall = new AltingFunctionChannel<>(true);
+        AltingFunctionChannel<String, Summary> summaryCall = new AltingFunctionChannel<>(true);
+        AltingFunctionChannel<Void, List<Advertisement>> rosterCall = new AltingFunctionChannel<>(true);
+        AltingFunctionChannel<Void, Data> localDataCall = new AltingFunctionChannel<>(true);
         
         //TODO Maybe put the summary Call in the NodeTracker
         
         new ProcessManager(new Parallel(new CSProcess[]{
             adUpdatedSplitter,
             summaryUpdatedSplitter,
-            new NodeTracker(adUpdatedSplitter, summaryUpdatedSplitter, rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
+            new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
-            new MulticastAdvertiser(dataOwner, rxAdOut, adUpdatedSplitter.register()),
+            new MulticastAdvertiser(dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
             new TcpGetComm(dataOwner, subscribeIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
-            new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
+            new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
             new AdGenerator(dataOwner, rxAdOut, commsIn)
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), commStatusIn, newDataOut, subscribeOut, dataCall.getClient());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }
 
     public static class UiInterface {
@@ -98,8 +98,10 @@ public class TestMain {
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
         public final FCClient<List<Comm>, Pair<String, InputStream>> dataCall;
-
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall) {
+        public final FCClient<Void, List<Advertisement>> rosterCall;
+        public final FCClient<String, Advertisement> adCall;
+        
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<String, Advertisement> adCall) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
@@ -107,6 +109,8 @@ public class TestMain {
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
             this.dataCall = dataCall;
+            this.rosterCall = rosterCall;
+            this.adCall = adCall;
         }
     }
     
