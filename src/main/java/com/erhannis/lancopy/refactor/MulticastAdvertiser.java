@@ -161,7 +161,6 @@ public class MulticastAdvertiser implements CSProcess {
         } else {
             rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
         }
-        rebroadcastTimer.sleep(1000);
         Alternative alt = new Alternative(new Guard[]{txAdIn, multicastIn, rebroadcastTimer});
         try {
             this.mr.start();

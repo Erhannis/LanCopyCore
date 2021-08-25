@@ -39,6 +39,7 @@ import okhttp3.OkHttpClient;
  * @author erhannis
  */
 public class DataOwner {
+
     public int SUMMARY_LENGTH = 100;
 
     public final Observable<String> localSummary = new Observable<>();
@@ -54,7 +55,23 @@ public class DataOwner {
     public String cachedSettingDefaultOpenPath = "";
 
     public final Options options;
-    public final Kryo kryo = new Kryo();
+
+    static private final ThreadLocal<Kryo> kryos = new ThreadLocal<Kryo>() {
+        protected Kryo initialValue() {
+            Kryo kryo = new Kryo();
+
+            kryo.setReferences(true);
+            kryo.register(Advertisement.class);
+            kryo.register(Comm.class);
+            kryo.register(TcpComm.class); //TODO Move these elsewhere?
+            kryo.register(Summary.class);
+            kryo.register(ArrayList.class);
+            UnmodifiableCollectionsSerializer.registerSerializers(kryo);
+            //kryo.register(java.util.Collections.UnmodifiableRandomAccessList.class);
+
+            return kryo;
+        }
+    };
     public final OkHttpClient ohClient = new OkHttpClient();
 
     public DataOwner() {
@@ -64,15 +81,6 @@ public class DataOwner {
             localSummary.set(summary);
         });
         this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
-
-        kryo.setReferences(true);
-        kryo.register(Advertisement.class);
-        kryo.register(Comm.class);
-        kryo.register(TcpComm.class); //TODO Move these elsewhere?
-        kryo.register(Summary.class);
-        kryo.register(ArrayList.class);
-        UnmodifiableCollectionsSerializer.registerSerializers(kryo);
-        //kryo.register(java.util.Collections.UnmodifiableRandomAccessList.class);
     }
 
     public void observedNode(NodeInfo info) {
@@ -122,7 +130,7 @@ public class DataOwner {
     public byte[] serialize(Object o) {
         ByteArrayOutputStream baos = new ByteArrayOutputStream();
         Output output = new Output(baos);
-        kryo.writeClassAndObject(output, o);
+        kryos.get().writeClassAndObject(output, o);
         output.close();
         return baos.toByteArray();
     }
@@ -130,16 +138,17 @@ public class DataOwner {
     public Object deserialize(byte[] b) {
         ByteArrayInputStream bais = new ByteArrayInputStream(b);
         Input input = new Input(bais);
-        Object o = kryo.readClassAndObject(input);
+        Object o = kryos.get().readClassAndObject(input);
         input.close();
         return o;
     }
-    
+
     //TODO Not really a great place for this
     private HashSet<String> msgs = new HashSet<>();
+
     public void errOnce(String msg) {
-    if (msgs.add(msg)) {
-      System.err.println(msg);
+        if (msgs.add(msg)) {
+            System.err.println(msg);
+        }
     }
-  }
 }

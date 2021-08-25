@@ -6,6 +6,7 @@
 package com.erhannis.lancopy.refactor;
 
 import com.erhannis.mathnstuff.MeUtils;
+import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
@@ -24,6 +25,7 @@ public class Advertisement {
         this.id = id;
         this.timestamp = timestamp;
         this.comms = Collections.unmodifiableList(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
+        //this.comms = new ArrayList<>(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
     }
     
     private Advertisement() {

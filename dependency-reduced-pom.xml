@@ -26,7 +26,11 @@
                   </excludes>
                 </filter>
               </filters>
-              <transformers />
+              <transformers>
+                <transformer>
+                  <mainClass>com.erhannis.lancopy.refactor.TestMain</mainClass>
+                </transformer>
+              </transformers>
             </configuration>
           </execution>
         </executions>
