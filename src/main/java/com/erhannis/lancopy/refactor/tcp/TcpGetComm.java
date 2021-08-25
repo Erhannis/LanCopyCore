@@ -113,7 +113,7 @@ public class TcpGetComm implements CSProcess {
         public void connect(TcpComm comm) {
             System.out.println("CWS addNode " + comm.owner.id + " via " + comm);
             dataOwner.errOnce("WsClient //TODO Split websocket channels?");
-            WebSocket ws = client.newWebSocket(new Request.Builder().url(comm.address + "/ws/updates").build(), this);
+            WebSocket ws = client.newWebSocket(new Request.Builder().url("http://" + comm.address + "/ws/updates").build(), this);
             socket2comm.put(ws, comm);
             // For availability robustness, self-report to server
             //ws.send(dataOwner.ID + ";" + dataOwner.PORT + ";" + dataOwner.localSummary.get());
@@ -129,14 +129,14 @@ public class TcpGetComm implements CSProcess {
 
     private final DataOwner dataOwner;
 
-    private final AltingChannelInput<Advertisement> subscribeIn;
+    private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutput<Summary> summaryOut;
     private final ChannelOutput<Advertisement> rosterOut;
     private final AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall;
     private final FCClient<String, Advertisement> adCall;
     private final ChannelOutput<Pair<Comm, Boolean>> statusOut;
 
-    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<Advertisement> subscribeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
+    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
         this.dataOwner = dataOwner;
         this.subscribeIn = subscribeIn;
         this.summaryOut = summaryOut;
@@ -174,7 +174,7 @@ public class TcpGetComm implements CSProcess {
                             //TODO Why did I decide to do it this way?
                             if (TcpComm.TYPE.equals(comm.type)) {
                                 try {
-                                    Request request = new Request.Builder().url(((TcpComm) comm).address + "/get/data").build();
+                                    Request request = new Request.Builder().url("http://" + ((TcpComm) comm).address + "/get/data").build();
                                     try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                         result = Pair.gen(response.header("content-type"), response.body().byteStream());
                                         // If work:
@@ -191,17 +191,17 @@ public class TcpGetComm implements CSProcess {
                     }
                     case 1: // subscribeIn
                     {
-                        Advertisement ad = subscribeIn.read();
+                        List<Comm> comms = subscribeIn.read();
                         dataOwner.errOnce("TcpGetComm //TODO Don't subscribe to a Comm more than once!!");
                         //TODO Permit refreshing of connections
-                        for (Comm comm : ad.comms) {
+                        for (Comm comm : comms) {
                             if (TcpComm.TYPE.equals(comm.type)) {
                                 try {
                                     wc.connect((TcpComm) comm);
                                     //TODO Don't automatically do this?  Have main request it?
                                     new ProcessManager(() -> {
                                         byte[] ladBytes = dataOwner.serialize(adCall.call(dataOwner.ID));
-                                        Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url(((TcpComm) comm).address + "/post/advertisement").build();
+                                        Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url("http://" + ((TcpComm) comm).address + "/post/advertisement").build();
                                         try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                             //TODO Do something?
                                         } catch (IOException e) {

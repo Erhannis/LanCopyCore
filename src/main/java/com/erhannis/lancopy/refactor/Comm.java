@@ -31,15 +31,14 @@ public abstract class Comm {
         }
         Comm o = (Comm)obj;
         // Can't recursively check owner, else infinite loop
-        if (!Objects.equals(this.type, o.type) || !Objects.equals(this.owner.id, o.owner.id)) {
-            return false;
-        }
+        if (!Objects.equals(this.type, o.type)) return false;
+        if (!Objects.equals(this.owner == null ? null : this.owner.id, o.owner == null ? null : o.owner.id)) return false;
         return true;
     }
     
     @Override
     public int hashCode() {
-        return Objects.hash(type, owner.id);
+        return Objects.hash(type, owner == null ? null : owner.id);
     }
 
     @Override

@@ -9,6 +9,7 @@ import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
+import com.erhannis.lancopy.refactor.tcp.TcpComm;
 import com.erhannis.mathnstuff.components.OptionsFrame;
 import com.erhannis.mathnstuff.utils.Observable;
 import com.erhannis.mathnstuff.utils.ObservableMap;
@@ -64,8 +65,10 @@ public class DataOwner {
         });
         this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
 
+        kryo.setReferences(true);
         kryo.register(Advertisement.class);
         kryo.register(Comm.class);
+        kryo.register(TcpComm.class); //TODO Move these elsewhere?
         kryo.register(Summary.class);
         kryo.register(ArrayList.class);
         UnmodifiableCollectionsSerializer.registerSerializers(kryo);

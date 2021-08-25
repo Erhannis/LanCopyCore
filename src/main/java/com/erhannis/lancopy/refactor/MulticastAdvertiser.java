@@ -161,6 +161,7 @@ public class MulticastAdvertiser implements CSProcess {
         } else {
             rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
         }
+        rebroadcastTimer.sleep(1000);
         Alternative alt = new Alternative(new Guard[]{txAdIn, multicastIn, rebroadcastTimer});
         try {
             this.mr.start();
@@ -168,17 +169,23 @@ public class MulticastAdvertiser implements CSProcess {
             while (true) {
                 switch (alt.priSelect()) {
                     case 0: // txAdIn
+                    {
                         Advertisement ad = txAdIn.read();
                         if (Objects.equals(ad.id, dataOwner.ID)) {
                             try {
-                                mp.multicast(dataOwner.serialize(ad));
+                                System.out.println("MulticastAdvertiser txa " + ad);
+                                byte[] msg = dataOwner.serialize(ad);
+                                System.out.println("MulticastAdvertiser txb " + new String(msg));
+                                mp.multicast(msg);
                                 lastAd = ad; //TODO Should move to before?
                             } catch (IOException ex) {
                                 Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
                             }
                         }
                         break;
+                    }
                     case 1: // multicastIn
+                    {
                         byte[] msg = multicastIn.read();
                         System.out.println("MulticastAdvertiser rx " + new String(msg));
                         Object o = null;
@@ -189,22 +196,28 @@ public class MulticastAdvertiser implements CSProcess {
                             break;
                         }
                         if (o instanceof Advertisement) {
-                            System.out.println("MA rx Advertisement");
+                            System.out.println("MA rx Advertisement : " + o);
                             rxAdOut.write((Advertisement)o);
                         } else {
                             System.err.println("MA rx non-Advertisement!");
                         }
                         break;
+                    }
                     case 2: // rebroadcastTimer
+                    {
                         rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
                         if (lastAd != null) {
                             try {
-                                mp.multicast(dataOwner.serialize(lastAd));
+                                System.out.println("MulticastAdvertiser rtxa " + lastAd);
+                                byte[] msg = dataOwner.serialize(lastAd);
+                                System.out.println("MulticastAdvertiser rtxb " + new String(msg));
+                                mp.multicast(msg);
                             } catch (IOException ex) {
                                 Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
                             }
                         }
                         break;
+                    }
                 }
             }
         } finally {

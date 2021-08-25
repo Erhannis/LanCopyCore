@@ -22,6 +22,10 @@ public class Summary {
         this.timestamp = timestamp;
         this.summary = summary;
     }
+    
+    private Summary() {
+        this(null, 0, null);
+    }
 
     @Override
     public boolean equals(Object obj) {

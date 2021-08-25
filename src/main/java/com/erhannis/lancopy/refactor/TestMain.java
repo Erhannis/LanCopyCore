@@ -7,6 +7,7 @@ package com.erhannis.lancopy.refactor;
 
 import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.data.Data;
+import com.erhannis.lancopy.data.TextData;
 import com.erhannis.lancopy.refactor.tcp.TcpGetComm;
 import com.erhannis.lancopy.refactor.tcp.TcpPutComm;
 import com.erhannis.mathnstuff.Pair;
@@ -19,6 +20,7 @@ import jcsp.helpers.CacheProcess;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
 import jcsp.helpers.SynchronousSplitter;
+import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.AltingFunctionChannel;
 import jcsp.lang.Any2OneChannel;
@@ -26,6 +28,7 @@ import jcsp.lang.CSProcess;
 import jcsp.lang.CSTimer;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.Guard;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
@@ -115,13 +118,13 @@ public class TestMain {
         AltingChannelInput<Data> newDataIn = newDataChannel.in();
         ChannelOutput<Data> newDataOut = JcspUtils.logDeadlock(newDataChannel.out());
 
-        Any2OneChannel<Advertisement> subscribeChannel = Channel.<Advertisement> any2one();
-        AltingChannelInput<Advertisement> subscribeIn = subscribeChannel.in();
-        ChannelOutput<Advertisement> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
+        Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one();
+        AltingChannelInput<List<Comm>> subscribeIn = subscribeChannel.in();
+        ChannelOutput<List<Comm>> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
 
-        Any2OneChannel<Pair<Comm,Boolean>> tcpStatusChannel = Channel.<Pair<Comm,Boolean>> any2one();
-        AltingChannelInput<Pair<Comm,Boolean>> tcpStatusIn = tcpStatusChannel.in();
-        ChannelOutput<Pair<Comm,Boolean>> tcpStatusOut = JcspUtils.logDeadlock(tcpStatusChannel.out());
+        Any2OneChannel<Pair<Comm,Boolean>> commStatusChannel = Channel.<Pair<Comm,Boolean>> any2one();
+        AltingChannelInput<Pair<Comm,Boolean>> commStatusIn = commStatusChannel.in();
+        ChannelOutput<Pair<Comm,Boolean>> commStatusOut = JcspUtils.logDeadlock(commStatusChannel.out());
         
         Any2OneChannel<List<Comm>> commsChannel = Channel.<List<Comm>> any2one();
         AltingChannelInput<List<Comm>> commsIn = commsChannel.in();
@@ -145,17 +148,42 @@ public class TestMain {
             new NodeTracker(adUpdatedSplitter, summaryUpdatedSplitter, rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
             new MulticastAdvertiser(dataOwner, rxAdOut, adUpdatedSplitter.register()),
-            new TcpGetComm(dataOwner, subscribeIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), tcpStatusOut),
+            new TcpGetComm(dataOwner, subscribeIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
             new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
-            mockUI(adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), newDataOut, subscribeOut, dataCall.getClient())
-        })).start();
-        Thread.sleep(100000);
+            new AdGenerator(dataOwner, rxAdOut, commsIn),
+            mockUI(dataOwner, adUpdatedSplitter.register(), summaryUpdatedSplitter.register(), commStatusIn, newDataOut, subscribeOut, dataCall.getClient())
+        })).run();
     }
 
-    private static CSProcess mockUI(Object... o) {
+    private static CSProcess mockUI(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm,Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall) {
         return new CSProcess() {
             @Override
             public void run() {
+                CSTimer timer = new CSTimer();
+                timer.setAlarm(timer.read() + 10000);
+                Alternative alt = new Alternative(new Guard[]{adIn, summaryIn, commStatusIn, timer});
+                while (true) {
+                    switch (alt.priSelect()) {
+                        case 0: // adIn
+                            Advertisement ad = adIn.read();
+                            System.out.println("UI rx ad: " + ad);
+                            if (!dataOwner.ID.equals(ad.id)) {
+                                //TODO Only subscribe to new or unconnected or whatever, things, somehow
+                                subscribeOut.write(ad.comms);
+                            }
+                            break;
+                        case 1: // summaryIn
+                            System.out.println("UI rx summary: " + summaryIn.read());
+                            break;
+                        case 2: // commStatusIn
+                            System.out.println("UI rx comm status: " + commStatusIn.read());
+                            break;
+                        case 3: // timer
+                            timer.setAlarm(timer.read() + 10000);
+                            newDataOut.write(new TextData("current time at " + dataOwner.ID + " : " + System.currentTimeMillis()));
+                            break;
+                    }
+                }
             }
         };
     }
