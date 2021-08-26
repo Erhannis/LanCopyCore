@@ -7,6 +7,7 @@ package com.erhannis.lancopy.refactor;
 
 import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.data.Data;
+import com.erhannis.lancopy.data.NoData;
 import java.util.Objects;
 import jcsp.helpers.FCServer;
 import jcsp.lang.Alternative;
@@ -23,7 +24,7 @@ import jcsp.lang.Guard;
 public class LocalData implements CSProcess {
     private final DataOwner dataOwner;
 
-    private Data data = null;
+    private Data data = new NoData();
     public final AltingFCServer<Void, Data> dataFC;
     private final ChannelOutput<Summary> summaryOut;
     private final AltingChannelInput<Data> dataIn;

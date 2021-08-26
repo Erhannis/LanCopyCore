@@ -12,3 +12,17 @@ Manual add node, connect over WAN
 
 Gonna need controllers for each PHY type - actually, each protocol
   One controller can have multiple Comms, though.
+
+
+Optionize
+  connection timeouts
+  parallelize connection attempts
+
+Fix
+  big file timeout
+    stream data properly
+  ipv6 zone id
+  look into why that error about "java.awt.datatransfer.UnsupportedFlavorException: Unicode String"
+
+reconnect
+manage Comms

@@ -6,6 +6,7 @@
 package com.erhannis.lancopy.refactor;
 
 import com.erhannis.lancopy.DataOwner;
+import com.erhannis.mathnstuff.MeUtils;
 import com.esotericsoftware.kryo.Kryo;
 import java.io.IOException;
 import java.net.DatagramPacket;
@@ -132,7 +133,6 @@ public class MulticastAdvertiser implements CSProcess {
     }
 
     private final DataOwner dataOwner;
-    private final long rebroadcastInterval;
 
     private final MulticastReceiver mr;
     private final MulticastPublisher mp;
@@ -146,7 +146,6 @@ public class MulticastAdvertiser implements CSProcess {
         this.txAdIn = txAdIn;
         int port = (int) dataOwner.options.getOrDefault("Multicast.port", 12113);
         String address = (String) dataOwner.options.getOrDefault("Multicast.address", "234.119.187.64");
-        this.rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L), false);
         dataOwner.errOnce("MulticastAdvertiser //TODO Deal with multiple interfaces?");
         this.mr = new MulticastReceiver(port, address);
         this.mp = new MulticastPublisher(port, address);
@@ -156,6 +155,7 @@ public class MulticastAdvertiser implements CSProcess {
     public void run() {
         AltingChannelInput<byte[]> multicastIn = mr.msgIn;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
+        long rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L), false);
         if (rebroadcastInterval < 0) {
             rebroadcastTimer.turnOff();
         } else {
@@ -172,9 +172,9 @@ public class MulticastAdvertiser implements CSProcess {
                         Advertisement ad = txAdIn.read();
                         if (Objects.equals(ad.id, dataOwner.ID)) {
                             try {
-                                System.out.println("MulticastAdvertiser txa " + ad);
+                                System.out.println("MulticastAdvertiser  txa " + ad);
                                 byte[] msg = dataOwner.serialize(ad);
-                                System.out.println("MulticastAdvertiser txb " + new String(msg));
+                                System.out.println("MulticastAdvertiser  txb " + MeUtils.cleanTextContent(new String(msg), "�"));
                                 mp.multicast(msg);
                                 lastAd = ad; //TODO Should move to before?
                             } catch (IOException ex) {
@@ -186,7 +186,7 @@ public class MulticastAdvertiser implements CSProcess {
                     case 1: // multicastIn
                     {
                         byte[] msg = multicastIn.read();
-                        System.out.println("MulticastAdvertiser rx " + new String(msg));
+                        System.out.println("MulticastAdvertiser  rx  " + MeUtils.cleanTextContent(new String(msg), "�"));
                         Object o = null;
                         try {
                             o = dataOwner.deserialize(msg);
@@ -204,12 +204,13 @@ public class MulticastAdvertiser implements CSProcess {
                     }
                     case 2: // rebroadcastTimer
                     {
+                        rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L), false);
                         rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
                         if (lastAd != null) {
                             try {
                                 System.out.println("MulticastAdvertiser rtxa " + lastAd);
                                 byte[] msg = dataOwner.serialize(lastAd);
-                                System.out.println("MulticastAdvertiser rtxb " + new String(msg));
+                                System.out.println("MulticastAdvertiser rtxb " + MeUtils.cleanTextContent(new String(msg), "�"));
                                 mp.multicast(msg);
                             } catch (IOException ex) {
                                 Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);

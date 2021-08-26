@@ -12,10 +12,12 @@ import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.MeUtils;
 import java.io.IOException;
+import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.SocketException;
+import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Enumeration;
@@ -169,7 +171,11 @@ public class TcpPutComm implements CSProcess {
             dataOwner.errOnce("TcpPutComm //TODO Deal with interface changes?");
             ArrayList<Comm> newComms = new ArrayList<>();
             for (InetAddress addr : MeUtils.listAllInterfaceAddresses()) {
-                newComms.add(new TcpComm(null, addr.getHostAddress() + ":" + port));
+                try {
+                    newComms.add(new TcpComm(null, "http", InetAddress.getByAddress(addr.getAddress()).getHostAddress(), port));
+                } catch (UnknownHostException ex) {
+                    Logger.getLogger(TcpPutComm.class.getName()).log(Level.SEVERE, null, ex);
+                }
             }
             commsOut.write(newComms);
 

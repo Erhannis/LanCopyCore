@@ -9,9 +9,12 @@ import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
+import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
 import java.io.InputStream;
+import java.net.ConnectException;
+import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
@@ -28,6 +31,7 @@ import jcsp.lang.ChannelOutput;
 import jcsp.lang.Guard;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
+import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
@@ -113,7 +117,7 @@ public class TcpGetComm implements CSProcess {
         public void connect(TcpComm comm) {
             System.out.println("CWS addNode " + comm.owner.id + " via " + comm);
             dataOwner.errOnce("WsClient //TODO Split websocket channels?");
-            WebSocket ws = client.newWebSocket(new Request.Builder().url("http://" + comm.address + "/ws/updates").build(), this);
+            WebSocket ws = client.newWebSocket(new Request.Builder().url(new HttpUrl.Builder().scheme(comm.scheme).host(comm.host).port(comm.port) + "ws/updates").build(), this);
             socket2comm.put(ws, comm);
             // For availability robustness, self-report to server
             //ws.send(dataOwner.ID + ";" + dataOwner.PORT + ";" + dataOwner.localSummary.get());
@@ -174,7 +178,8 @@ public class TcpGetComm implements CSProcess {
                             //TODO Why did I decide to do it this way?
                             if (TcpComm.TYPE.equals(comm.type)) {
                                 try {
-                                    Request request = new Request.Builder().url("http://" + ((TcpComm) comm).address + "/get/data").build();
+                                    TcpComm tc = (TcpComm) comm;
+                                    Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/data").build()).build();
                                     try {
                                         Response response = dataOwner.ohClient.newCall(request).execute();
                                         result = Pair.gen(response.header("content-type"), response.body().byteStream());
@@ -202,9 +207,14 @@ public class TcpGetComm implements CSProcess {
                                     //TODO Don't automatically do this?  Have main request it?
                                     new ProcessManager(() -> {
                                         byte[] ladBytes = dataOwner.serialize(adCall.call(dataOwner.ID));
-                                        Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url("http://" + ((TcpComm) comm).address + "/post/advertisement").build();
+                                        TcpComm tc = (TcpComm) comm;
+                                        Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("post/advertisement").build()).build();
                                         try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                             //TODO Do something?
+                                        } catch (ConnectException e) {
+                                            MeUtils.getStackTrace(e.getMessage()).printStackTrace();
+                                        } catch (SocketTimeoutException e) {
+                                            MeUtils.getStackTrace(e.getMessage()).printStackTrace();
                                         } catch (IOException e) {
                                             e.printStackTrace();
                                         }
