@@ -34,6 +34,7 @@ import jcsp.lang.CSProcess;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.Guard;
 import org.eclipse.jetty.util.MultiException;
+import org.eclipse.jetty.websocket.api.RemoteEndpoint;
 import org.eclipse.jetty.websocket.api.Session;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
@@ -56,7 +57,7 @@ public class TcpPutComm implements CSProcess {
 
         private final FCClient<String, Summary> summaryCall;
         private final FCClient<Void, List<Advertisement>> rosterCall;
-        
+
         private static final Queue<Session> sessions = new ConcurrentLinkedQueue<>();
 
         public WsServer(DataOwner dataOwner, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
@@ -72,14 +73,20 @@ public class TcpPutComm implements CSProcess {
             try {
                 Summary summary = summaryCall.call(dataOwner.ID);
                 byte[] sbytes = dataOwner.serialize(summary);
-                session.getRemote().sendBytes(ByteBuffer.wrap(sbytes));
+                RemoteEndpoint re = session.getRemote();
+                synchronized (re) {
+                    re.sendBytes(ByteBuffer.wrap(sbytes));
+                }
             } catch (Throwable t) {
                 t.printStackTrace();
             }
             try {
                 List<Advertisement> roster = rosterCall.call(null);
                 byte[] rbytes = dataOwner.serialize(roster);
-                session.getRemote().sendBytes(ByteBuffer.wrap(rbytes));
+                RemoteEndpoint re = session.getRemote();
+                synchronized (re) {
+                    re.sendBytes(ByteBuffer.wrap(rbytes));
+                }
             } catch (Throwable t) {
                 t.printStackTrace();
             }
@@ -101,7 +108,10 @@ public class TcpPutComm implements CSProcess {
             ByteBuffer bb = ByteBuffer.wrap(msg);
             for (Session s : sessions) {
                 try {
-                    s.getRemote().sendBytes(bb);
+                    RemoteEndpoint re = s.getRemote();
+                    synchronized (re) {
+                        re.sendBytes(bb);
+                    }
                 } catch (IOException ex) {
                     me.addSuppressed(ex);
                 }
@@ -141,7 +151,7 @@ public class TcpPutComm implements CSProcess {
     public void run() {
         try {
             WsServer wsServer = new WsServer(dataOwner, summaryCall, rosterCall);
-            
+
             //TODO Split websocket channels?
             //TODO Hmm, I've kinda failed my usual thing of insulating inner processes from outer processes
             //TODO Not sure you can have more than one Spark server, so that might complicate composition

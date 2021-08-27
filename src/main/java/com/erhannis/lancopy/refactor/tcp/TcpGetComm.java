@@ -14,6 +14,7 @@ import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
+import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
 import java.util.ArrayList;
 import java.util.List;
@@ -28,6 +29,7 @@ import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.Crew;
 import jcsp.lang.Guard;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
@@ -60,6 +62,8 @@ public class TcpGetComm implements CSProcess {
         private final ChannelOutput<List<Advertisement>> internalRosterOut;
         private final ChannelOutput<Pair<Comm, Boolean>> internalStatusOut;
 
+        private final Crew crew = new Crew();
+
         public WsClient(DataOwner dataOwner, ChannelOutput<Summary> internalSummaryOut, ChannelOutput<List<Advertisement>> internalRosterOut, ChannelOutput<Pair<Comm, Boolean>> internalStatusOut) {
             this.dataOwner = dataOwner;
             this.internalSummaryOut = internalSummaryOut;
@@ -70,7 +74,16 @@ public class TcpGetComm implements CSProcess {
         @Override
         public void onOpen(WebSocket webSocket, Response response) {
             System.out.println("CWS Open");
-            final TcpComm comm = socket2comm.get(webSocket);
+            crew.startRead();
+            TcpComm comm;
+            try {
+                comm = socket2comm.get(webSocket);
+            } finally {
+                crew.endRead();
+            }
+            if (comm == null) {
+                System.err.println("COMM NULL");
+            }
             internalStatusOut.write(Pair.gen(comm, true));
         }
 
@@ -101,31 +114,59 @@ public class TcpGetComm implements CSProcess {
         public void onClosing(WebSocket webSocket, int code, String reason) {
             webSocket.close(NORMAL_CLOSURE_STATUS, null); //TODO Should this?
             System.out.println("CWS Closing : " + code + " / " + reason);
-            TcpComm comm = socket2comm.get(webSocket);
+            crew.startRead();
+            TcpComm comm;
+            try {
+                comm = socket2comm.get(webSocket);
+            } finally {
+                crew.endRead();
+            }
             //dataOwner.observedNode(new NodeInfo(info.id, info.url, info.summary, NodeInfo.State.INACTIVE));
+            if (comm == null) {
+                System.err.println("COMM NULL");
+            }
             internalStatusOut.write(Pair.gen(comm, false));
         }
 
         @Override
         public void onFailure(WebSocket webSocket, Throwable t, Response response) {
             System.err.println("CWS Error : " + t.getMessage());
-            TcpComm comm = socket2comm.get(webSocket);
+            crew.startRead();
+            TcpComm comm;
+            try {
+                comm = socket2comm.get(webSocket);
+            } finally {
+                crew.endRead();
+            }
             //dataOwner.observedNode(new NodeInfo(info.id, info.url, info.summary, NodeInfo.State.INACTIVE));
+            if (comm == null) {
+                System.err.println("COMM NULL");
+            }
             internalStatusOut.write(Pair.gen(comm, false));
         }
 
         public void connect(TcpComm comm) {
             System.out.println("CWS addNode " + comm.owner.id + " via " + comm);
             dataOwner.errOnce("WsClient //TODO Split websocket channels?");
-            WebSocket ws = client.newWebSocket(new Request.Builder().url(new HttpUrl.Builder().scheme(comm.scheme).host(comm.host).port(comm.port) + "ws/updates").build(), this);
-            socket2comm.put(ws, comm);
+            crew.startWrite();
+            try {
+                WebSocket ws = client.newWebSocket(new Request.Builder().url(new HttpUrl.Builder().scheme(comm.scheme).host(comm.host).port(comm.port) + "ws/updates").build(), this);
+                socket2comm.put(ws, comm);
+            } finally {
+                crew.endWrite();
+            }
             // For availability robustness, self-report to server
             //ws.send(dataOwner.ID + ";" + dataOwner.PORT + ";" + dataOwner.localSummary.get());
         }
 
         public void shutdown() {
-            for (WebSocket ws : socket2comm.keySet()) {
-                ws.close(NORMAL_CLOSURE_STATUS, "Shutting down");
+            crew.startRead();
+            try {
+                for (WebSocket ws : socket2comm.keySet()) {
+                    ws.close(NORMAL_CLOSURE_STATUS, "Shutting down");
+                }
+            } finally {
+                crew.endRead();
             }
             client.dispatcher().executorService().shutdown();
         }
@@ -153,7 +194,7 @@ public class TcpGetComm implements CSProcess {
     @Override
     public void run() {
         dataOwner.errOnce("TcpGetComm //TODO Permit request roster?");
-        
+
         Any2OneChannel<Summary> internalSummaryChannel = Channel.<Summary>any2one();
         Any2OneChannel<List<Advertisement>> internalRosterChannel = Channel.<List<Advertisement>>any2one();
         Any2OneChannel<Pair<Comm, Boolean>> internalStatusChannel = Channel.<Pair<Comm, Boolean>>any2one();
@@ -211,7 +252,7 @@ public class TcpGetComm implements CSProcess {
                                         Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("post/advertisement").build()).build();
                                         try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                             //TODO Do something?
-                                        } catch (ConnectException e) {
+                                        } catch (ConnectException | NoRouteToHostException e) {
                                             MeUtils.getStackTrace(e.getMessage()).printStackTrace();
                                         } catch (SocketTimeoutException e) {
                                             MeUtils.getStackTrace(e.getMessage()).printStackTrace();

@@ -76,7 +76,7 @@ public class MulticastAdvertiser implements CSProcess {
         }
         
         public void run() {
-            System.out.println(">>MulticastAdvertiser");
+            System.out.println(">>MulticastAdvertiser " + address + " " + port);
             InetAddress group;
             try {
                 socket = new MulticastSocket(port);
@@ -120,6 +120,7 @@ public class MulticastAdvertiser implements CSProcess {
         private final int port;
 
         public MulticastPublisher(int port, String address) throws IOException {
+            System.out.println("MulticastPublisher start, " + address + " " + port);
             this.socket = new MulticastSocket();
             this.group = InetAddress.getByName(address);
             this.port = port;
@@ -134,9 +135,6 @@ public class MulticastAdvertiser implements CSProcess {
 
     private final DataOwner dataOwner;
 
-    private final MulticastReceiver mr;
-    private final MulticastPublisher mp;
-
     private final ChannelOutput<Advertisement> rxAdOut;
     private final AltingChannelInput<Advertisement> txAdIn;
 
@@ -144,15 +142,22 @@ public class MulticastAdvertiser implements CSProcess {
         this.dataOwner = dataOwner;
         this.rxAdOut = rxAdOut;
         this.txAdIn = txAdIn;
-        int port = (int) dataOwner.options.getOrDefault("Multicast.port", 12113);
-        String address = (String) dataOwner.options.getOrDefault("Multicast.address", "234.119.187.64");
-        dataOwner.errOnce("MulticastAdvertiser //TODO Deal with multiple interfaces?");
-        this.mr = new MulticastReceiver(port, address);
-        this.mp = new MulticastPublisher(port, address);
     }
 
     @Override
     public void run() {
+        int port = (int) dataOwner.options.getOrDefault("Multicast.port", 12113);
+        String address = (String) dataOwner.options.getOrDefault("Multicast.address", "234.119.187.64");
+        dataOwner.errOnce("MulticastAdvertiser //TODO Deal with multiple interfaces?");
+
+        MulticastReceiver mr = new MulticastReceiver(port, address);
+        MulticastPublisher mp;
+        try {
+            mp = new MulticastPublisher(port, address);
+        } catch (IOException ex) {
+            throw new RuntimeException(ex);
+        }
+
         AltingChannelInput<byte[]> multicastIn = mr.msgIn;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
         long rebroadcastInterval = (long) dataOwner.options.getOrDefault("Multicast.rebroadcast_interval", dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L), false);
@@ -163,7 +168,7 @@ public class MulticastAdvertiser implements CSProcess {
         }
         Alternative alt = new Alternative(new Guard[]{txAdIn, multicastIn, rebroadcastTimer});
         try {
-            this.mr.start();
+            mr.start();
             Advertisement lastAd = null;
             while (true) {
                 switch (alt.priSelect()) {
@@ -172,9 +177,9 @@ public class MulticastAdvertiser implements CSProcess {
                         Advertisement ad = txAdIn.read();
                         if (Objects.equals(ad.id, dataOwner.ID)) {
                             try {
-                                System.out.println("MulticastAdvertiser  txa " + ad);
+                                System.out.println("MulticastAdvertiser  tx " + ad);
                                 byte[] msg = dataOwner.serialize(ad);
-                                System.out.println("MulticastAdvertiser  txb " + MeUtils.cleanTextContent(new String(msg), "�"));
+                                //System.out.println("MulticastAdvertiser  txb " + MeUtils.cleanTextContent(new String(msg), "�"));
                                 mp.multicast(msg);
                                 lastAd = ad; //TODO Should move to before?
                             } catch (IOException ex) {
@@ -186,19 +191,19 @@ public class MulticastAdvertiser implements CSProcess {
                     case 1: // multicastIn
                     {
                         byte[] msg = multicastIn.read();
-                        System.out.println("MulticastAdvertiser  rx  " + MeUtils.cleanTextContent(new String(msg), "�"));
                         Object o = null;
                         try {
                             o = dataOwner.deserialize(msg);
                         } catch (Exception e) {
                             e.printStackTrace();
+                            System.out.println("MulticastAdvertiser  rx  " + MeUtils.cleanTextContent(new String(msg), "�"));
                             break;
                         }
                         if (o instanceof Advertisement) {
-                            System.out.println("MA rx Advertisement : " + o);
+                            System.out.println("MulticastAdvertiser  rx Advertisement : " + o);
                             rxAdOut.write((Advertisement)o);
                         } else {
-                            System.err.println("MA rx non-Advertisement!");
+                            System.err.println("MulticastAdvertiser  rx non-Advertisement!");
                         }
                         break;
                     }
@@ -208,9 +213,9 @@ public class MulticastAdvertiser implements CSProcess {
                         rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
                         if (lastAd != null) {
                             try {
-                                System.out.println("MulticastAdvertiser rtxa " + lastAd);
+                                System.out.println("MulticastAdvertiser rtx " + lastAd);
                                 byte[] msg = dataOwner.serialize(lastAd);
-                                System.out.println("MulticastAdvertiser rtxb " + MeUtils.cleanTextContent(new String(msg), "�"));
+                                //System.out.println("MulticastAdvertiser rtxb " + MeUtils.cleanTextContent(new String(msg), "�"));
                                 mp.multicast(msg);
                             } catch (IOException ex) {
                                 Logger.getLogger(MulticastAdvertiser.class.getName()).log(Level.SEVERE, null, ex);
