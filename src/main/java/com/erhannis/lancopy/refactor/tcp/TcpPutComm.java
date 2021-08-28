@@ -163,6 +163,9 @@ public class TcpPutComm implements CSProcess {
                 rxAdOut.write(ad);
                 return null;
             });
+            Spark.get("/get/time", (request, response) -> {
+                return System.currentTimeMillis();
+            });
             Spark.get("/get/data", (request, response) -> {
                 Data data = ldataCall.call(null);
                 response.type(data.getMime());
