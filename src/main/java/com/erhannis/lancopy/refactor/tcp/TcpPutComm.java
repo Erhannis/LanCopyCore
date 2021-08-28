@@ -12,17 +12,12 @@ import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.MeUtils;
 import java.io.IOException;
-import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.InterfaceAddress;
-import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
-import java.util.Enumeration;
 import java.util.List;
-import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
@@ -163,7 +158,7 @@ public class TcpPutComm implements CSProcess {
                 rxAdOut.write(ad);
                 return null;
             });
-            Spark.get("/get/time", (request, response) -> {
+            Spark.get("/get/poke", (request, response) -> {
                 return System.currentTimeMillis();
             });
             Spark.get("/get/data", (request, response) -> {
