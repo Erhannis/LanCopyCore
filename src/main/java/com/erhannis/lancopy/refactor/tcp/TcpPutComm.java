@@ -101,22 +101,13 @@ public class TcpPutComm implements CSProcess {
 
         public void broadcast(byte[] msg) {
             MultiException me = new MultiException();
+            ByteBuffer bb = ByteBuffer.wrap(msg);
             for (Session s : sessions) {
                 try {
                     RemoteEndpoint re = s.getRemote();
                     synchronized (re) {
-                        ByteBuffer bb = ByteBuffer.wrap(msg);
-                        re.sendBytes(bb, new WriteCallback() {
-                            @Override
-                            public void writeFailed(Throwable x) {
-                                System.out.println("writeFailed " + s);
-                            }
-
-                            @Override
-                            public void writeSuccess() {
-                                System.out.println("writeSuccess " + s);
-                            }
-                        });
+                        bb.rewind();
+                        re.sendBytes(bb);
                     }
                 } catch (Throwable ex) {
                     me.addSuppressed(ex);
