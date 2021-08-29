@@ -31,6 +31,7 @@ import jcsp.lang.Guard;
 import org.eclipse.jetty.util.MultiException;
 import org.eclipse.jetty.websocket.api.RemoteEndpoint;
 import org.eclipse.jetty.websocket.api.Session;
+import org.eclipse.jetty.websocket.api.WriteCallback;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
 import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
@@ -100,14 +101,24 @@ public class TcpPutComm implements CSProcess {
 
         public void broadcast(byte[] msg) {
             MultiException me = new MultiException();
-            ByteBuffer bb = ByteBuffer.wrap(msg);
             for (Session s : sessions) {
                 try {
                     RemoteEndpoint re = s.getRemote();
                     synchronized (re) {
-                        re.sendBytes(bb);
+                        ByteBuffer bb = ByteBuffer.wrap(msg);
+                        re.sendBytes(bb, new WriteCallback() {
+                            @Override
+                            public void writeFailed(Throwable x) {
+                                System.out.println("writeFailed " + s);
+                            }
+
+                            @Override
+                            public void writeSuccess() {
+                                System.out.println("writeSuccess " + s);
+                            }
+                        });
                     }
-                } catch (IOException ex) {
+                } catch (Throwable ex) {
                     me.addSuppressed(ex);
                 }
             }

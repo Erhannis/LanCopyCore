@@ -99,6 +99,9 @@ public class TcpGetComm implements CSProcess {
         @Override
         public void onMessage(WebSocket webSocket, ByteString bytes) {
             System.out.println("CWS Receiving bytes : " + bytes.hex());
+            if (bytes.size() == 0) {
+                return;
+            }
             Object o = dataOwner.deserialize(bytes.toByteArray());
             if (o instanceof List) {
                 List l = (List) o;
