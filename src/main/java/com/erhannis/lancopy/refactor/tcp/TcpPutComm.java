@@ -11,7 +11,12 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.MeUtils;
+import fi.iki.elonen.NanoHTTPD.Response.IStatus;
+import fi.iki.elonen.NanoHTTPD.Response.Status;
+import fi.iki.elonen.NanoWSD;
+import java.io.ByteArrayInputStream;
 import java.io.IOException;
+import java.io.InputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
 import java.net.InterfaceAddress;
@@ -21,7 +26,9 @@ import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
 import java.util.Enumeration;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
 import java.util.concurrent.ConcurrentLinkedQueue;
@@ -33,14 +40,6 @@ import jcsp.lang.AltingChannelInput;
 import jcsp.lang.CSProcess;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.Guard;
-import org.eclipse.jetty.util.MultiException;
-import org.eclipse.jetty.websocket.api.RemoteEndpoint;
-import org.eclipse.jetty.websocket.api.Session;
-import org.eclipse.jetty.websocket.api.annotations.OnWebSocketClose;
-import org.eclipse.jetty.websocket.api.annotations.OnWebSocketConnect;
-import org.eclipse.jetty.websocket.api.annotations.OnWebSocketMessage;
-import org.eclipse.jetty.websocket.api.annotations.WebSocket;
-import spark.Spark;
 
 /**
  * Server Comm, over TCP<br/>
@@ -49,22 +48,201 @@ import spark.Spark;
  * @author erhannis
  */
 public class TcpPutComm implements CSProcess {
-
-    @WebSocket
-    public static class WsServer {
+    public static class DebugWebSocketServer extends NanoWSD {
+        private static final Logger LOG = Logger.getLogger(DebugWebSocketServer.class.getName());
 
         private final DataOwner dataOwner;
+        
+        private final boolean debug0 = true;
 
+        private final ChannelOutput<Advertisement> rxAdOut;
+        private final FCClient<Void, Data> ldataCall;
         private final FCClient<String, Summary> summaryCall;
         private final FCClient<Void, List<Advertisement>> rosterCall;
 
-        private static final Queue<Session> sessions = new ConcurrentLinkedQueue<>();
-
-        public WsServer(DataOwner dataOwner, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
+        public DebugWebSocketServer(int port, DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
+            super(port);
+            this.rxAdOut = rxAdOut;
             this.dataOwner = dataOwner;
+            this.ldataCall = ldataCall;
             this.summaryCall = summaryCall;
             this.rosterCall = rosterCall;
         }
+
+        @Override
+        protected WebSocket openWebSocket(IHTTPSession handshake) {
+            System.out.println("openWebSocket");
+            return new DebugWebSocket(this, handshake);
+        }
+
+        private static class DebugWebSocket extends WebSocket {
+
+            private final DebugWebSocketServer server;
+
+            public DebugWebSocket(DebugWebSocketServer server, IHTTPSession handshakeRequest) {
+                super(handshakeRequest);
+                this.server = server;
+            }
+
+            @Override
+            protected void onOpen() {
+            }
+
+            @Override
+            protected void onClose(WebSocketFrame.CloseCode code, String reason, boolean initiatedByRemote) {
+                if (server.debug0) {
+                    System.out.println("C [" + (initiatedByRemote ? "Remote" : "Self") + "] " + (code != null ? code : "UnknownCloseCode[" + code + "]")
+                            + (reason != null && !reason.isEmpty() ? ": " + reason : ""));
+                }
+            }
+
+            @Override
+            protected void onMessage(WebSocketFrame message) {
+                try {
+                    message.setUnmasked();
+                    sendFrame(message);
+                } catch (IOException e) {
+                    throw new RuntimeException(e);
+                }
+            }
+
+            @Override
+            protected void onPong(WebSocketFrame pong) {
+                if (server.debug0) {
+                    System.out.println("P " + pong);
+                }
+            }
+
+            @Override
+            protected void onException(IOException exception) {
+                DebugWebSocketServer.LOG.log(Level.SEVERE, "exception occured", exception);
+            }
+
+            @Override
+            protected void debugFrameReceived(WebSocketFrame frame) {
+                if (server.debug0) {
+                    System.out.println("R " + frame);
+                }
+            }
+
+            @Override
+            protected void debugFrameSent(WebSocketFrame frame) {
+                if (server.debug0) {
+                    System.out.println("S " + frame);
+                }
+            }
+        }
+
+        private void listItem(StringBuilder sb, Map.Entry<String, ? extends Object> entry) {
+            sb.append("<li><code><b>").append(entry.getKey()).append("</b> = ").append(entry.getValue()).append("</code></li>");
+        }
+
+        @Override
+        public Response serveHttp(IHTTPSession session) {
+            Map<String, List<String>> decodedQueryParameters = decodeParameters(session.getQueryParameterString());
+
+            switch (session.getUri()) {
+                case "/post/advertisement": {
+                    //MAYBE Check mime type?  It's not really necessary....
+                    InputStream is = session.getInputStream();
+                    try {
+                        Advertisement ad = (Advertisement) dataOwner.deserialize(MeUtils.inputStreamToBytes(is)); //TODO InputStream?
+                        rxAdOut.write(ad);
+                    } catch (IOException ex) {
+                        Logger.getLogger(TcpPutComm.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    return null;
+                }
+
+                case "/get/time": {                    
+                    return newFixedLengthResponse(System.currentTimeMillis()+"");
+                }
+                case "/get/data": {
+                    Data data = ldataCall.call(null);
+                    return newChunkedResponse(Status.OK, data.getMime(), data.serialize());
+                }
+                case "/get/roster": {
+                    List<Advertisement> roster = rosterCall.call(null);
+                    return newChunkedResponse(Status.OK, "lancopy/roster", new ByteArrayInputStream(dataOwner.serialize(roster))); //TODO InputStream
+                }
+                default:
+                    //throw new AssertionError();
+            }
+
+
+            //TODO Remove
+            StringBuilder sb = new StringBuilder();
+            sb.append("<html>");
+            sb.append("<head><title>Debug Server</title></head>");
+            sb.append("<body>");
+            sb.append("<h1>Debug Server</h1>");
+
+            sb.append("<p><blockquote><b>URI</b> = ").append(String.valueOf(session.getUri())).append("<br />");
+
+            sb.append("<b>Method</b> = ").append(String.valueOf(session.getMethod())).append("</blockquote></p>");
+
+            sb.append("<h3>Headers</h3><p><blockquote>").append(toString(session.getHeaders())).append("</blockquote></p>");
+
+            sb.append("<h3>Parms</h3><p><blockquote>").append(toString(session.getParms())).append("</blockquote></p>");
+
+            sb.append("<h3>Parms (multi values?)</h3><p><blockquote>").append(toString(decodedQueryParameters)).append("</blockquote></p>");
+
+            try {
+                Map<String, String> files = new HashMap<String, String>();
+                session.parseBody(files);
+                sb.append("<h3>Files</h3><p><blockquote>").append(toString(files)).append("</blockquote></p>");
+            } catch (Exception e) {
+                e.printStackTrace();
+            }
+
+            sb.append("</body>");
+            sb.append("</html>");
+            //return newFixedLengthResponse(sb.toString());
+            return null;
+        }
+
+        private String toString(Map<String, ? extends Object> map) {
+            if (map.size() == 0) {
+                return "";
+            }
+            return unsortedList(map);
+        }
+
+        private String unsortedList(Map<String, ? extends Object> map) {
+            StringBuilder sb = new StringBuilder();
+            sb.append("<ul>");
+            for (Map.Entry<String, ? extends Object> entry : map.entrySet()) {
+                listItem(sb, entry);
+            }
+            sb.append("</ul>");
+            return sb.toString();
+        }
+    }
+
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    
+    /*
+    
+    @WebSocket
+    public static class WsServer {
+
+        private static final Queue<Session> sessions = new ConcurrentLinkedQueue<>();
 
         @OnWebSocketConnect
         public void connected(Session session) throws IOException {
@@ -126,6 +304,9 @@ public class TcpPutComm implements CSProcess {
         }
     }
 
+
+*/
+
     private final DataOwner dataOwner;
 
     private final ChannelOutput<List<Comm>> commsOut; //TODO Support changes?  Removals?
@@ -149,35 +330,14 @@ public class TcpPutComm implements CSProcess {
 
     @Override
     public void run() {
+        DebugWebSocketServer server = null;
         try {
-            WsServer wsServer = new WsServer(dataOwner, summaryCall, rosterCall);
-
-            //TODO Split websocket channels?
-            //TODO Hmm, I've kinda failed my usual thing of insulating inner processes from outer processes
-            //TODO Not sure you can have more than one Spark server, so that might complicate composition
-            Spark.port(0);
-            Spark.webSocket("/ws/updates", wsServer);
-            Spark.post("post/advertisement", (request, response) -> {
-                //MAYBE Check mime type?  It's not really necessary....
-                Advertisement ad = (Advertisement) dataOwner.deserialize(request.bodyAsBytes()); //TODO InputStream?
-                rxAdOut.write(ad);
-                return null;
-            });
-            Spark.get("/get/time", (request, response) -> {
-                return System.currentTimeMillis();
-            });
-            Spark.get("/get/data", (request, response) -> {
-                Data data = ldataCall.call(null);
-                response.type(data.getMime());
-                return data.serialize();
-            });
-            Spark.get("/get/roster", (request, response) -> {
-                List<Advertisement> roster = rosterCall.call(null);
-                response.type("lancopy/roster");
-                return dataOwner.serialize(roster);
-            });
-            Spark.awaitInitialization();
-            int port = Spark.port();
+            //TODO Can you put the ws on a specific URI?
+            server = new DebugWebSocketServer(0, dataOwner, rxAdOut, ldataCall, summaryCall, rosterCall);
+            server.start((int) dataOwner.options.getOrDefault("TcpPutComm.WS_TIMEOUT", 30000));
+            
+            //Spark.awaitInitialization();
+            int port = server.getListeningPort();
             System.out.println("TcpPutComm " + dataOwner.ID + " starting on port " + port);
 
             //TODO Allow whitelist/blacklist interfaces
@@ -197,22 +357,30 @@ public class TcpPutComm implements CSProcess {
                 switch (alt.priSelect()) {
                     case 0: // txRosterIn
                         Advertisement roster = txRosterIn.read();
-                        wsServer.broadcast(dataOwner.serialize(roster));
+                        System.err.println("//TODO Don't forget to do the broadcasting!");
+                        //server.broadcast(dataOwner.serialize(roster));
                         break;
                     case 1: // txLSummaryIn
                         Summary lSummary = txLSummaryIn.read();
-                        wsServer.broadcast(dataOwner.serialize(lSummary));
+                        System.err.println("//TODO Don't forget to do the broadcasting!");
+                        //server.broadcast(dataOwner.serialize(lSummary));
                         break;
                 }
             }
         } catch (SocketException ex) {
             ex.printStackTrace();
+        } catch (IOException ex) {
+            ex.printStackTrace();
         } finally {
             System.out.println("TcpPutComm shutting down");
             dataOwner.errOnce("TcpPutComm //TODO Handle poison");
             dataOwner.errOnce("TcpPutComm //TODO Remove comms");
-            Spark.stop();
-            Spark.awaitStop();
+            try {
+                server.stop();
+            } catch (Throwable t) {
+            }
+            //Spark.stop();
+            //Spark.awaitStop();
             //ws.shutdown();
         }
     }
