@@ -11,18 +11,22 @@ import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
+import com.erhannis.mathnstuff.utils.DThread;
 import java.io.IOException;
 import java.io.InputStream;
 import java.net.ConnectException;
 import java.net.NoRouteToHostException;
 import java.net.SocketTimeoutException;
-import java.util.ArrayList;
+import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
+import jcsp.helpers.JcspUtils.DeadlockLoggingChannelOutput;
 import jcsp.lang.Alternative;
+import jcsp.lang.AltingBarrier;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.AltingFCServer;
 import jcsp.lang.Any2OneChannel;
@@ -31,7 +35,6 @@ import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.Crew;
 import jcsp.lang.Guard;
-import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
@@ -96,6 +99,9 @@ public class TcpGetComm implements CSProcess {
         @Override
         public void onMessage(WebSocket webSocket, ByteString bytes) {
             System.out.println("CWS Receiving bytes : " + bytes.hex());
+            if (bytes.size() == 0) {
+                return;
+            }
             Object o = dataOwner.deserialize(bytes.toByteArray());
             if (o instanceof List) {
                 List l = (List) o;
@@ -175,14 +181,16 @@ public class TcpGetComm implements CSProcess {
     private final DataOwner dataOwner;
 
     private final AltingChannelInput<List<Comm>> subscribeIn;
+    private final AltingChannelInput<Collection<Comm>> pokeIn;
     private final ChannelOutput<Summary> summaryOut;
     private final ChannelOutput<Advertisement> rosterOut;
     private final AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall;
     private final FCClient<String, Advertisement> adCall;
     private final ChannelOutput<Pair<Comm, Boolean>> statusOut;
 
-    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
+    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, AltingChannelInput<Collection<Comm>> pokeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
         this.dataOwner = dataOwner;
+        this.pokeIn = pokeIn;
         this.subscribeIn = subscribeIn;
         this.summaryOut = summaryOut;
         this.rosterOut = rosterOut;
@@ -197,16 +205,19 @@ public class TcpGetComm implements CSProcess {
 
         Any2OneChannel<Summary> internalSummaryChannel = Channel.<Summary>any2one();
         Any2OneChannel<List<Advertisement>> internalRosterChannel = Channel.<List<Advertisement>>any2one();
-        Any2OneChannel<Pair<Comm, Boolean>> internalStatusChannel = Channel.<Pair<Comm, Boolean>>any2one();
+        Any2OneChannel<Pair<Comm, Boolean>> internalStatusChannel = Channel.<Pair<Comm, Boolean>>any2one(0);
 
-        WsClient wc = new WsClient(dataOwner, JcspUtils.logDeadlock(internalSummaryChannel.out()), JcspUtils.logDeadlock(internalRosterChannel.out()), JcspUtils.logDeadlock(internalStatusChannel.out()));
+        // Used both in the WsClient and in some of the one-off threads down below
+        ChannelOutput<Pair<Comm, Boolean>> internalStatusOut = JcspUtils.logDeadlock(internalStatusChannel.out());
+        
+        WsClient wc = new WsClient(dataOwner, JcspUtils.logDeadlock(internalSummaryChannel.out()), JcspUtils.logDeadlock(internalRosterChannel.out()), internalStatusOut);
 
         AltingChannelInput<Summary> internalSummaryIn = internalSummaryChannel.in();
         AltingChannelInput<List<Advertisement>> internalRosterIn = internalRosterChannel.in();
         AltingChannelInput<Pair<Comm, Boolean>> internalStatusIn = internalStatusChannel.in();
 
         // Fetch process
-        Alternative alt = new Alternative(new Guard[]{dataCall, subscribeIn, internalSummaryIn, internalRosterIn, internalStatusIn});
+        Alternative alt = new Alternative(new Guard[]{dataCall, subscribeIn, pokeIn, internalSummaryIn, internalRosterIn, internalStatusIn});
         try {
             while (true) {
                 switch (alt.priSelect()) {
@@ -214,32 +225,143 @@ public class TcpGetComm implements CSProcess {
                     {
                         List<Comm> comms = dataCall.startRead();
                         //TODO Trying all the Comms could be bad
-                        Pair<String, InputStream> result = null;
-                        for (Comm comm : comms) {
-                            //TODO Why did I decide to do it this way?
-                            if (TcpComm.TYPE.equals(comm.type)) {
+                        final Pair<String, InputStream> result;
+
+                        boolean parallel = (Boolean) dataOwner.options.getOrDefault("GetComm.PARALLEL_ATTEMPTS", true);
+                        boolean highLatency = (Boolean) dataOwner.options.getOrDefault("GetComm.HIGH_LATENCY", false);
+                        boolean checkPoke = (Boolean) dataOwner.options.getOrDefault("GetComm.REQUIRE_POKE_STATUS_SUCCESS", true);
+
+                        if (parallel) {
+                            Any2OneChannel<Pair<String, InputStream>> resultChannel = Channel.<Pair<String, InputStream>>any2one(0);
+                            AltingChannelInput<Pair<String, InputStream>> resultIn = resultChannel.in();
+                            DeadlockLoggingChannelOutput<Pair<String, InputStream>> resultOut = JcspUtils.logDeadlock(resultChannel.out());
+
+                            AltingBarrier failureBarrier = AltingBarrier.create();
+
+                            //TODO Some kinda thread pool?
+                            HashSet<Thread> attempts = new HashSet<>();
+                            for (Comm comm : comms) {
                                 try {
-                                    TcpComm tc = (TcpComm) comm;
-                                    Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/data").build()).build();
-                                    try {
-                                        Response response = dataOwner.ohClient.newCall(request).execute();
-                                        result = Pair.gen(response.header("content-type"), response.body().byteStream());
-                                        // If work:
-                                        break;
-                                    } catch (Exception e) {
+                                    //TODO Why did I decide to do it this way?
+                                    if (TcpComm.TYPE.equals(comm.type)) {
+                                        TcpComm tc = (TcpComm) comm;
+                                        //TODO Use the results to update status?
+
+                                        if (highLatency) {
+                                            // Don't wait for a test GET to come back - immediately start fetching from all endpoints and see which one wins
+                                            AltingBarrier bar = failureBarrier.expand();
+                                            attempts.add(new DThread(() -> {
+                                                bar.mark();
+                                                System.out.println("-->Poke call " + comm);
+                                                Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/data").build()).build();
+                                                try {
+                                                    Response response = dataOwner.ohClient.newCall(request).execute();
+                                                    System.out.println("Request succeeded! " + comm);
+                                                    resultOut.write(Pair.gen(response.header("content-type"), response.body().byteStream()), comm+"");
+                                                } catch (Throwable e) {
+                                                    System.err.println("Request failed!" + comm);
+                                                    e.printStackTrace();
+                                                }
+                                                bar.contract();
+                                            }));
+                                        } else {
+                                            // Send test GET first, to see which comms work, without incurring large costs
+                                            AltingBarrier bar = failureBarrier.expand();
+                                            attempts.add(new DThread(() -> {
+                                                bar.mark();
+                                                System.out.println("-->Poke call " + comm);
+                                                dataOwner.errOnce("TcpGetComm //TODO okhttp doesn't seem to always react to interruption");
+                                                Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/poke").build()).build();
+                                                try {
+                                                    Response response = dataOwner.ohClient.newCall(request).execute();
+                                                    if (checkPoke) {
+                                                        if (!response.isSuccessful()) {
+                                                            System.err.println("Poke returned status " + response.code() + "; returning! " + comm);
+                                                            bar.contract();
+                                                            return;
+                                                        }
+                                                    }
+                                                    System.err.println("Poke succeeded! " + comm);
+                                                } catch (Throwable e) {
+                                                    System.err.println("Poke failed; returning! " + comm);
+                                                    e.printStackTrace();
+                                                    bar.contract();
+                                                    return;
+                                                }
+                                                request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/data").build()).build();
+                                                try {
+                                                    Response response = dataOwner.ohClient.newCall(request).execute();
+                                                    System.err.println("Request succeeded! " + comm);
+                                                    resultOut.write(Pair.gen(response.header("content-type"), response.body().byteStream()), comm+"");
+                                                } catch (Throwable e) {
+                                                    System.err.println("Request failed! " + comm);
+                                                    e.printStackTrace();
+                                                }
+                                                bar.contract();
+                                            }));
+                                        }
                                     }
                                 } catch (Exception e) {
                                     e.printStackTrace();
                                 }
                             }
+
+                            for (Thread t : attempts) {
+                                t.start();
+                            }
+
+                            Alternative getAlt = new Alternative(new Guard[]{resultIn, failureBarrier});
+                            switch (getAlt.priSelect()) {
+                                case 0: { // resultIn
+                                    result = resultIn.read();
+                                    System.out.println("dataCall rx resultIn");
+                                    resultIn.poison(10);
+                                    for (Thread t : attempts) {
+                                        t.interrupt();
+                                    }
+                                    break;
+                                }
+                                case 1: { // failureBarrier
+                                    failureBarrier.contract();
+                                    System.out.println("dataCall - All comms failed");
+                                    result = null;
+                                    break;
+                                }
+                                default: {
+                                    throw new AssertionError();
+                                }
+                            }
+                        } else {
+                            Pair<String, InputStream> result0 = null;
+                            for (Comm comm : comms) {
+                                try {
+                                    //TODO Why did I decide to do it this way?
+                                    if (TcpComm.TYPE.equals(comm.type)) {
+                                        TcpComm tc = (TcpComm) comm;
+                                        Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/data").build()).build();
+                                        try {
+                                            Response response = dataOwner.ohClient.newCall(request).execute();
+                                            result0 = Pair.gen(response.header("content-type"), response.body().byteStream());
+                                            // If work:
+                                            break;
+                                        } catch (Throwable e) {
+                                        }
+                                    }
+                                } catch (Exception e) {
+                                    e.printStackTrace();
+                                }
+                            }
+                            result = result0;
                         }
                         dataCall.endRead(result);
                         break;
                     }
+
                     case 1: // subscribeIn
                     {
                         List<Comm> comms = subscribeIn.read();
                         dataOwner.errOnce("TcpGetComm //TODO Don't subscribe to a Comm more than once!!");
+                        byte[] ladBytes = dataOwner.serialize(adCall.call(dataOwner.ID));
                         //TODO Permit refreshing of connections
                         for (Comm comm : comms) {
                             if (TcpComm.TYPE.equals(comm.type)) {
@@ -247,9 +369,9 @@ public class TcpGetComm implements CSProcess {
                                     wc.connect((TcpComm) comm);
                                     //TODO Don't automatically do this?  Have main request it?
                                     new ProcessManager(() -> {
-                                        byte[] ladBytes = dataOwner.serialize(adCall.call(dataOwner.ID));
                                         TcpComm tc = (TcpComm) comm;
                                         Request request = new Request.Builder().post(RequestBody.create(ladBytes, MediaType.get("lancopy/advertisement"))).url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("post/advertisement").build()).build();
+                                        //TODO Use info for comm status?
                                         try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                             //TODO Do something?
                                         } catch (ConnectException | NoRouteToHostException e) {
@@ -260,7 +382,7 @@ public class TcpGetComm implements CSProcess {
                                             e.printStackTrace();
                                         }
                                     }).start();
-                                } catch (Exception e) {
+                                } catch (Throwable e) {
                                     e.printStackTrace();
                                 }
                                 // If work:
@@ -272,12 +394,50 @@ public class TcpGetComm implements CSProcess {
                         }
                         break;
                     }
-                    case 2: // internalSummaryIn
+                    case 2: // pokeIn
+                    {
+                        boolean checkPoke = (Boolean) dataOwner.options.getOrDefault("GetComm.REQUIRE_POKE_STATUS_SUCCESS", true);
+                        Collection<Comm> comms = pokeIn.read();
+                        for (Comm comm : comms) {
+                            if (TcpComm.TYPE.equals(comm.type)) {
+                                try {
+                                    new ProcessManager(() -> {
+                                        TcpComm tc = (TcpComm) comm;
+                                        Request request = new Request.Builder().get().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/poke").build()).build();
+                                        try (Response response = dataOwner.ohClient.newCall(request).execute()) {
+                                            if (checkPoke) {
+                                                internalStatusOut.write(Pair.gen(comm, response.isSuccessful()));
+                                            } else {
+                                                internalStatusOut.write(Pair.gen(comm, true));
+                                            }
+                                            return;
+                                        } catch (ConnectException | NoRouteToHostException e) {
+                                            MeUtils.getStackTrace(e.getMessage()).printStackTrace();
+                                        } catch (SocketTimeoutException e) {
+                                            MeUtils.getStackTrace(e.getMessage()).printStackTrace();
+                                        } catch (IOException e) {
+                                            e.printStackTrace();
+                                        }
+                                        internalStatusOut.write(Pair.gen(comm, false));
+                                    }).start();
+                                } catch (Throwable e) {
+                                    e.printStackTrace();
+                                }
+                                // If work:
+                                //TODO How do we know?  Wait for several seconds on multiple comms?  Try all and see which ones make it?
+                                //  I guess for now, try all.  But it's wasteful.
+                                //TODO Make less wasteful.
+                                //break;
+                            }
+                        }
+                        break;
+                    }
+                    case 3: // internalSummaryIn
                     {
                         summaryOut.write(internalSummaryIn.read());
                         break;
                     }
-                    case 3: // internalRosterIn
+                    case 4: // internalRosterIn
                     {
                         List<Advertisement> roster = internalRosterIn.read();
                         //TODO Compactify?  Tracker might be more efficient that way.  Maybe.
@@ -286,7 +446,7 @@ public class TcpGetComm implements CSProcess {
                         }
                         break;
                     }
-                    case 4: // internalStatusIn
+                    case 5: // internalStatusIn
                     {
                         statusOut.write(internalStatusIn.read());
                         break;
@@ -296,6 +456,7 @@ public class TcpGetComm implements CSProcess {
         } finally {
             dataOwner.errOnce("TcpGetComm //TODO Handle poison");
             wc.shutdown();
+            internalStatusIn.poison(10);
         }
     }
 }

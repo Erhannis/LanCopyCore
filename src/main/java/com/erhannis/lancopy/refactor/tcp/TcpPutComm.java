@@ -19,8 +19,6 @@ import java.io.IOException;
 import java.io.InputStream;
 import java.net.Inet6Address;
 import java.net.InetAddress;
-import java.net.InterfaceAddress;
-import java.net.NetworkInterface;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
@@ -154,7 +152,7 @@ public class TcpPutComm implements CSProcess {
                     return null;
                 }
 
-                case "/get/time": {                    
+                case "/get/poke": {
                     return newFixedLengthResponse(System.currentTimeMillis()+"");
                 }
                 case "/get/data": {
@@ -288,9 +286,10 @@ public class TcpPutComm implements CSProcess {
                 try {
                     RemoteEndpoint re = s.getRemote();
                     synchronized (re) {
+                        bb.rewind();
                         re.sendBytes(bb);
                     }
-                } catch (IOException ex) {
+                } catch (Throwable ex) {
                     me.addSuppressed(ex);
                 }
             }
