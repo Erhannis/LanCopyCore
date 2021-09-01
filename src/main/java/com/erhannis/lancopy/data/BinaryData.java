@@ -28,7 +28,7 @@ public class BinaryData extends Data {
   }
   
   @Override
-  public String getMime() {
+  public String getMime(boolean external) {
     return "application/octet-stream";
   }
 
@@ -42,7 +42,7 @@ public class BinaryData extends Data {
    * @return 
    */
   @Override
-  public InputStream serialize() {
+  public InputStream serialize(boolean external) {
     return stream; //TODO Warning: this can maybe only be used once per BinaryData
   }
 

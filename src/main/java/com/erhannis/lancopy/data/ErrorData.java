@@ -41,8 +41,12 @@ public class ErrorData extends Data {
   }
   
   @Override
-  public String getMime() {
-    return "text/error";
+  public String getMime(boolean external) {
+    if (external) {
+      return "text/plain";
+    } else {
+      return "text/error";
+    }
   }
 
   @Override
@@ -51,7 +55,7 @@ public class ErrorData extends Data {
   }
 
   @Override
-  public InputStream serialize() {
+  public InputStream serialize(boolean external) {
     return new ByteArrayInputStream(text.getBytes(UTF8));
   }
 

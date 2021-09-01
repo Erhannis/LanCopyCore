@@ -57,8 +57,12 @@ public class FilesData extends Data {
   }
   
   @Override
-  public String getMime() {
-    return "lancopy/files";
+  public String getMime(boolean external) {
+    if (external) {
+      return "application/octet-stream";
+    } else {
+      return "lancopy/files";
+    }
   }
 
   @Override
@@ -97,19 +101,23 @@ public class FilesData extends Data {
   }
 
   @Override
-  public InputStream serialize() {
+  public InputStream serialize(boolean external) {
     if (files.length == 1 && !files[0].isDirectory()) {
       try {
         // This is a little cluttered
         byte[] filenameBytes = files[0].getName().getBytes(UTF8);
-        return new SequenceInputStream(new ByteArrayInputStream(Bytes.concat(
-                Ints.toByteArray(1), // Not yet really used
-                Ints.toByteArray(filenameBytes.length),
-                filenameBytes)),
-                new FileInputStream(files[0]));
+        if (external) {
+          return new FileInputStream(files[0]);
+        } else {
+          return new SequenceInputStream(new ByteArrayInputStream(Bytes.concat(
+                  Ints.toByteArray(1), // Not yet really used
+                  Ints.toByteArray(filenameBytes.length),
+                  filenameBytes)),
+                  new FileInputStream(files[0]));
+        }
       } catch (FileNotFoundException ex) {
         Logger.getLogger(FilesData.class.getName()).log(Level.SEVERE, null, ex);
-        return new ErrorData("Error serializing files: " + ex.getMessage()).serialize();
+        return new ErrorData("Error serializing files: " + ex.getMessage()).serialize(external); //TODO Wrong mime type
       }
     }
 
@@ -150,11 +158,15 @@ public class FilesData extends Data {
     Date date = new Date();
     SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
     byte[] filenameBytes = (dateFormat.format(date)+".tar").getBytes(UTF8);
-    return new SequenceInputStream(new ByteArrayInputStream(Bytes.concat(
-            Ints.toByteArray(1),
-            Ints.toByteArray(filenameBytes.length),
-            filenameBytes)),
-            new ByteArrayInputStream(baos.toByteArray()));
+    if (external) {
+      return new ByteArrayInputStream(baos.toByteArray());
+    } else {
+      return new SequenceInputStream(new ByteArrayInputStream(Bytes.concat(
+              Ints.toByteArray(1),
+              Ints.toByteArray(filenameBytes.length),
+              filenameBytes)),
+              new ByteArrayInputStream(baos.toByteArray()));
+    }
   }
 
   public static JFileChooser fileChooser = new JFileChooser();

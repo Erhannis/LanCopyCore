@@ -39,3 +39,5 @@ Advertise
   RFID
   
 change interrupted processes to cancelable socket calls
+close okhttp resources?
+Data permit plain reading, particularly FilesData
