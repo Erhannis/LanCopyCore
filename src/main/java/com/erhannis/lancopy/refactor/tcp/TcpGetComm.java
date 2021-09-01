@@ -36,6 +36,7 @@ import jcsp.lang.ChannelOutput;
 import jcsp.lang.Crew;
 import jcsp.lang.Guard;
 import jcsp.lang.ProcessManager;
+import okhttp3.Call;
 import okhttp3.HttpUrl;
 import okhttp3.MediaType;
 import okhttp3.OkHttpClient;
@@ -44,6 +45,7 @@ import okhttp3.RequestBody;
 import okhttp3.Response;
 import okhttp3.WebSocket;
 import okhttp3.WebSocketListener;
+import okhttp3.internal.connection.RealCall;
 import okio.ByteString;
 
 /**
@@ -273,6 +275,7 @@ public class TcpGetComm implements CSProcess {
                                                 dataOwner.errOnce("TcpGetComm //TODO okhttp doesn't seem to always react to interruption");
                                                 Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/poke").build()).build();
                                                 try {
+                                                    //TODO Make these cancelable
                                                     Response response = dataOwner.ohClient.newCall(request).execute();
                                                     if (checkPoke) {
                                                         if (!response.isSuccessful()) {
@@ -375,10 +378,13 @@ public class TcpGetComm implements CSProcess {
                                         try (Response response = dataOwner.ohClient.newCall(request).execute()) {
                                             //TODO Do something?
                                         } catch (ConnectException | NoRouteToHostException e) {
+                                            System.err.println("comm err " + comm);
                                             MeUtils.getStackTrace(e.getMessage()).printStackTrace();
                                         } catch (SocketTimeoutException e) {
+                                            System.err.println("comm err " + comm);
                                             MeUtils.getStackTrace(e.getMessage()).printStackTrace();
                                         } catch (IOException e) {
+                                            System.err.println("comm err " + comm);
                                             e.printStackTrace();
                                         }
                                     }).start();

@@ -26,3 +26,16 @@ Fix
 
 reconnect
 manage Comms
+gzip comms
+encrypt comms
+
+Advertise
+^ Multicast
+  mDNS
+  Bluetooth
+  Modem
+  QR
+  Wifi hotspot?
+  RFID
+  
+change interrupted processes to cancelable socket calls

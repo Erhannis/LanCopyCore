@@ -11,6 +11,7 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.mathnstuff.MeUtils;
+import fi.iki.elonen.NanoHTTPD;
 import fi.iki.elonen.NanoHTTPD.Response.IStatus;
 import fi.iki.elonen.NanoHTTPD.Response.Status;
 import fi.iki.elonen.NanoWSD;
@@ -46,62 +47,62 @@ import jcsp.lang.Guard;
  * @author erhannis
  */
 public class TcpPutComm implements CSProcess {
+
     public static class DebugWebSocketServer extends NanoWSD {
-        private static final Logger LOG = Logger.getLogger(DebugWebSocketServer.class.getName());
-
-        private final DataOwner dataOwner;
-        
-        private final boolean debug0 = true;
-
-        private final ChannelOutput<Advertisement> rxAdOut;
-        private final FCClient<Void, Data> ldataCall;
-        private final FCClient<String, Summary> summaryCall;
-        private final FCClient<Void, List<Advertisement>> rosterCall;
-
-        public DebugWebSocketServer(int port, DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
-            super(port);
-            this.rxAdOut = rxAdOut;
-            this.dataOwner = dataOwner;
-            this.ldataCall = ldataCall;
-            this.summaryCall = summaryCall;
-            this.rosterCall = rosterCall;
-        }
-
-        @Override
-        protected WebSocket openWebSocket(IHTTPSession handshake) {
-            System.out.println("openWebSocket");
-            return new DebugWebSocket(this, handshake);
-        }
 
         private static class DebugWebSocket extends WebSocket {
-
+            //TODO This kinda makes the class non-static.  I kinda feel like I oughtta explicitly pass in the relevant variables, but there are a lot of them, only used in THIS class, and it just seemed like a pain and kinda pointless.
+            //       I'm leaving it as references through `server` rather than direct references, to maybe make them easier to find.
             private final DebugWebSocketServer server;
 
-            public DebugWebSocket(DebugWebSocketServer server, IHTTPSession handshakeRequest) {
+            public DebugWebSocket(DebugWebSocketServer server, IHTTPSession handshakeRequest, Queue<DebugWebSocket> sockets) {
                 super(handshakeRequest);
                 this.server = server;
             }
 
             @Override
             protected void onOpen() {
+                System.out.println("SWS Connected");
+                
+                server.sockets.add(this);
+
+                try {
+                    Summary summary = server.summaryCall.call(server.dataOwner.ID);
+                    byte[] sbytes = server.dataOwner.serialize(summary);
+                    //RemoteEndpoint re = session.getRemote();
+                    server.dataOwner.errOnce("//TODO This synchronization may not be sufficient - may need to better ensure only one msg tx to a given endpoint at a time");
+                    synchronized (this) {
+                        send(sbytes);
+                    }
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
+                try {
+                    List<Advertisement> roster = server.rosterCall.call(null);
+                    byte[] rbytes = server.dataOwner.serialize(roster);
+                    //RemoteEndpoint re = session.getRemote();
+                    //TODO Ditto
+                    synchronized (this) {
+                        send(rbytes);
+                    }
+                } catch (Throwable t) {
+                    t.printStackTrace();
+                }
             }
 
             @Override
             protected void onClose(WebSocketFrame.CloseCode code, String reason, boolean initiatedByRemote) {
+                System.out.println("SWS Closing : " + code + " / " + reason + " R:" + initiatedByRemote);
                 if (server.debug0) {
                     System.out.println("C [" + (initiatedByRemote ? "Remote" : "Self") + "] " + (code != null ? code : "UnknownCloseCode[" + code + "]")
                             + (reason != null && !reason.isEmpty() ? ": " + reason : ""));
                 }
+                server.sockets.remove(this);
             }
 
             @Override
             protected void onMessage(WebSocketFrame message) {
-                try {
-                    message.setUnmasked();
-                    sendFrame(message);
-                } catch (IOException e) {
-                    throw new RuntimeException(e);
-                }
+                System.out.println("SWS Receiving : " + message);
             }
 
             @Override
@@ -131,29 +132,83 @@ public class TcpPutComm implements CSProcess {
             }
         }
 
-        private void listItem(StringBuilder sb, Map.Entry<String, ? extends Object> entry) {
-            sb.append("<li><code><b>").append(entry.getKey()).append("</b> = ").append(entry.getValue()).append("</code></li>");
+        private static final Logger LOG = Logger.getLogger(DebugWebSocketServer.class.getName());
+
+        private final Queue<DebugWebSocket> sockets = new ConcurrentLinkedQueue<>();
+
+        private final DataOwner dataOwner;
+
+        private final boolean debug0 = true;
+
+        private final ChannelOutput<Advertisement> rxAdOut;
+        private final FCClient<Void, Data> ldataCall;
+        private final FCClient<String, Summary> summaryCall;
+        private final FCClient<Void, List<Advertisement>> rosterCall;
+
+        public DebugWebSocketServer(int port, DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
+            super(port);
+            this.rxAdOut = rxAdOut;
+            this.dataOwner = dataOwner;
+            this.ldataCall = ldataCall;
+            this.summaryCall = summaryCall;
+            this.rosterCall = rosterCall;
+        }
+
+        @Override
+        protected WebSocket openWebSocket(IHTTPSession handshake) {
+            System.out.println("openWebSocket");
+            return new DebugWebSocket(this, handshake, sockets);
+        }
+
+        public void broadcast(byte[] msg) {
+            RuntimeException me = new RuntimeException();
+            for (DebugWebSocket s : sockets) {
+                try {
+                    //TODO Ditto
+                    synchronized (s) {
+                        s.send(msg);
+                    }
+                } catch (Throwable ex) {
+                    me.addSuppressed(ex);
+                }
+            }
+            if (me.getSuppressed().length > 0) {
+                try {
+                    throw me;
+                } catch (RuntimeException ex) {
+                    Logger.getLogger(DebugWebSocketServer.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            }
         }
 
         @Override
         public Response serveHttp(IHTTPSession session) {
+            HTTPSession session0 = (HTTPSession)session;
             Map<String, List<String>> decodedQueryParameters = decodeParameters(session.getQueryParameterString());
 
             switch (session.getUri()) {
                 case "/post/advertisement": {
+                    System.out.println("--> SRV /post/advertisement");
                     //MAYBE Check mime type?  It's not really necessary....
+                    int maxAdSize = (Integer) dataOwner.options.getOrDefault("PutComm.MAX_AD_SIZE", 250000);
+                    long size = session0.getBodySize();
+                    if (size > maxAdSize) {
+                        return newFixedLengthResponse(Status.PAYLOAD_TOO_LARGE, NanoHTTPD.MIME_PLAINTEXT, null);
+                    }
                     InputStream is = session.getInputStream();
                     try {
-                        Advertisement ad = (Advertisement) dataOwner.deserialize(MeUtils.inputStreamToBytes(is)); //TODO InputStream?
+                        byte[] body = MeUtils.readNBytes(is, (int)size);
+                        System.out.println("-@- SRV /post/advertisement");
+                        Advertisement ad = (Advertisement) dataOwner.deserialize(body); //TODO InputStream?
                         rxAdOut.write(ad);
                     } catch (IOException ex) {
                         Logger.getLogger(TcpPutComm.class.getName()).log(Level.SEVERE, null, ex);
                     }
-                    return null;
+                    System.out.println("<-- SRV /post/advertisement");
+                    return newFixedLengthResponse(null);
                 }
-
                 case "/get/poke": {
-                    return newFixedLengthResponse(System.currentTimeMillis()+"");
+                    return newFixedLengthResponse(System.currentTimeMillis() + "");
                 }
                 case "/get/data": {
                     Data data = ldataCall.call(null);
@@ -164,9 +219,8 @@ public class TcpPutComm implements CSProcess {
                     return newChunkedResponse(Status.OK, "lancopy/roster", new ByteArrayInputStream(dataOwner.serialize(roster))); //TODO InputStream
                 }
                 default:
-                    //throw new AssertionError();
+                //throw new AssertionError();
             }
-
 
             //TODO Remove
             StringBuilder sb = new StringBuilder();
@@ -215,96 +269,11 @@ public class TcpPutComm implements CSProcess {
             sb.append("</ul>");
             return sb.toString();
         }
-    }
 
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    
-    /*
-    
-    @WebSocket
-    public static class WsServer {
-
-        private static final Queue<Session> sessions = new ConcurrentLinkedQueue<>();
-
-        @OnWebSocketConnect
-        public void connected(Session session) throws IOException {
-            System.out.println("SWS Connected");
-            sessions.add(session);
-            try {
-                Summary summary = summaryCall.call(dataOwner.ID);
-                byte[] sbytes = dataOwner.serialize(summary);
-                RemoteEndpoint re = session.getRemote();
-                synchronized (re) {
-                    re.sendBytes(ByteBuffer.wrap(sbytes));
-                }
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
-            try {
-                List<Advertisement> roster = rosterCall.call(null);
-                byte[] rbytes = dataOwner.serialize(roster);
-                RemoteEndpoint re = session.getRemote();
-                synchronized (re) {
-                    re.sendBytes(ByteBuffer.wrap(rbytes));
-                }
-            } catch (Throwable t) {
-                t.printStackTrace();
-            }
-        }
-
-        @OnWebSocketClose
-        public void closed(Session session, int statusCode, String reason) {
-            System.out.println("SWS Closing : " + statusCode + " / " + reason);
-            sessions.remove(session);
-        }
-
-        @OnWebSocketMessage
-        public void message(Session session, String message) throws IOException {
-            System.out.println("SWS Receiving : " + message);
-        }
-
-        public void broadcast(byte[] msg) {
-            MultiException me = new MultiException();
-            ByteBuffer bb = ByteBuffer.wrap(msg);
-            for (Session s : sessions) {
-                try {
-                    RemoteEndpoint re = s.getRemote();
-                    synchronized (re) {
-                        bb.rewind();
-                        re.sendBytes(bb);
-                    }
-                } catch (Throwable ex) {
-                    me.addSuppressed(ex);
-                }
-            }
-            if (me.getSuppressed().length > 0) {
-                try {
-                    throw me;
-                } catch (MultiException ex) {
-                    Logger.getLogger(WsServer.class.getName()).log(Level.SEVERE, null, ex);
-                }
-            }
+        private void listItem(StringBuilder sb, Map.Entry<String, ? extends Object> entry) {
+            sb.append("<li><code><b>").append(entry.getKey()).append("</b> = ").append(entry.getValue()).append("</code></li>");
         }
     }
-
-
-*/
 
     private final DataOwner dataOwner;
 
@@ -334,7 +303,7 @@ public class TcpPutComm implements CSProcess {
             //TODO Can you put the ws on a specific URI?
             server = new DebugWebSocketServer(0, dataOwner, rxAdOut, ldataCall, summaryCall, rosterCall);
             server.start((int) dataOwner.options.getOrDefault("TcpPutComm.WS_TIMEOUT", 30000));
-            
+
             //Spark.awaitInitialization();
             int port = server.getListeningPort();
             System.out.println("TcpPutComm " + dataOwner.ID + " starting on port " + port);
@@ -356,13 +325,11 @@ public class TcpPutComm implements CSProcess {
                 switch (alt.priSelect()) {
                     case 0: // txRosterIn
                         Advertisement roster = txRosterIn.read();
-                        System.err.println("//TODO Don't forget to do the broadcasting!");
-                        //server.broadcast(dataOwner.serialize(roster));
+                        server.broadcast(dataOwner.serialize(roster));
                         break;
                     case 1: // txLSummaryIn
                         Summary lSummary = txLSummaryIn.read();
-                        System.err.println("//TODO Don't forget to do the broadcasting!");
-                        //server.broadcast(dataOwner.serialize(lSummary));
+                        server.broadcast(dataOwner.serialize(lSummary));
                         break;
                 }
             }
