@@ -6,6 +6,7 @@
 package com.erhannis.lancopy.data;
 
 import com.erhannis.mathnstuff.MeUtils;
+import com.erhannis.mathnstuff.utils.Timing;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
 import java.io.BufferedInputStream;
@@ -102,6 +103,9 @@ public class FilesData extends Data {
 
   @Override
   public InputStream serialize(boolean external) {
+    System.out.println("--> FilesData serialize");
+    Timing timing = new Timing();
+    try {
     if (files.length == 1 && !files[0].isDirectory()) {
       try {
         // This is a little cluttered
@@ -121,51 +125,57 @@ public class FilesData extends Data {
       }
     }
 
-    //TODO Allow actual streaming, so we don't have to load the files into memory
-    ByteArrayOutputStream baos = new ByteArrayOutputStream();
+    return MeUtils.incrementalStream(os -> {
+        try {
+            Date date = new Date();
+            SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
+            byte[] filenameBytes = (dateFormat.format(date)+".tar").getBytes(UTF8);
+            if (!external) {
+                MeUtils.pipeInputStreamToOutputStream(new ByteArrayInputStream(Bytes.concat(
+                  Ints.toByteArray(1),
+                  Ints.toByteArray(filenameBytes.length),
+                  filenameBytes)), os);
+            }
+            
+            LinkedList<PathedFile> pending = new LinkedList<>();
+            for (File f : files) {
+              pending.add(new PathedFile("", f));
+            }
 
-    LinkedList<PathedFile> pending = new LinkedList<>();
-    for (File f : files) {
-      pending.add(new PathedFile("", f));
-    }
+            try (TarOutputStream out = new TarOutputStream(os)) {
+              while (!pending.isEmpty()) {
+                PathedFile pf = pending.pop();
+                if (pf.file.isDirectory()) {
+                  for (File f : pf.file.listFiles()) {
+                    PathedFile subfile = new PathedFile(pf.path + "/" + pf.file.getName(), f);
+                    pending.add(subfile);
+                  }
+                  continue;
+                }
+                out.putNextEntry(new TarEntry(pf.file, pf.path + "/" + pf.file.getName()));
+                BufferedInputStream origin = new BufferedInputStream(new FileInputStream(pf.file));
+                int count;
+                byte data[] = new byte[2048];
 
-    try (TarOutputStream out = new TarOutputStream(baos)) {
-      while (!pending.isEmpty()) {
-        PathedFile pf = pending.pop();
-        if (pf.file.isDirectory()) {
-          for (File f : pf.file.listFiles()) {
-            PathedFile subfile = new PathedFile(pf.path + "/" + pf.file.getName(), f);
-            pending.add(subfile);
-          }
-          continue;
+                while ((count = origin.read(data)) != -1) {
+                  out.write(data, 0, count);
+                }
+
+                out.flush();
+                origin.close();
+              }
+            } catch (IOException ex) {
+              Logger.getLogger(FilesData.class.getName()).log(Level.SEVERE, null, ex);
+            }
+        } catch (IOException e) {
+            //TODO Not really an error; probably don't even need to log the trace
+            System.err.println("FilesData serialize stream aborted");
+            e.printStackTrace();
         }
-        out.putNextEntry(new TarEntry(pf.file, pf.path + "/" + pf.file.getName()));
-        BufferedInputStream origin = new BufferedInputStream(new FileInputStream(pf.file));
-        int count;
-        byte data[] = new byte[2048];
+    });
 
-        while ((count = origin.read(data)) != -1) {
-          out.write(data, 0, count);
-        }
-
-        out.flush();
-        origin.close();
-      }
-    } catch (IOException ex) {
-      Logger.getLogger(FilesData.class.getName()).log(Level.SEVERE, null, ex);
-    }
-
-    Date date = new Date();
-    SimpleDateFormat dateFormat = new SimpleDateFormat("yyyy-MM-dd_HH-mm-ss");
-    byte[] filenameBytes = (dateFormat.format(date)+".tar").getBytes(UTF8);
-    if (external) {
-      return new ByteArrayInputStream(baos.toByteArray());
-    } else {
-      return new SequenceInputStream(new ByteArrayInputStream(Bytes.concat(
-              Ints.toByteArray(1),
-              Ints.toByteArray(filenameBytes.length),
-              filenameBytes)),
-              new ByteArrayInputStream(baos.toByteArray()));
+    } finally {
+        System.out.println("<-- FilesData serialize "+timing.stop());
     }
   }
 
@@ -195,9 +205,11 @@ public class FilesData extends Data {
         files[i] = f;
       }
       System.out.println("Done deserializing files");
+      System.out.println("<-- FilesData deserialize");
       return new FilesData(files);
     } catch (Throwable t) {
       Logger.getLogger(FilesData.class.getName()).log(Level.SEVERE, null, t);
+      System.out.println("<-- FilesData deserialize");
       return new ErrorData("Error deserializing files: " + t);
     }
   }
