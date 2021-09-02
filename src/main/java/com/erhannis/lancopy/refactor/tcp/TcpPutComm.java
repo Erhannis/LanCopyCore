@@ -93,7 +93,7 @@ public class TcpPutComm implements CSProcess {
             @Override
             protected void onClose(WebSocketFrame.CloseCode code, String reason, boolean initiatedByRemote) {
                 System.out.println("SWS Closing : " + code + " / " + reason + " R:" + initiatedByRemote);
-                if (server.debug0) {
+                if (server.debug) {
                     System.out.println("C [" + (initiatedByRemote ? "Remote" : "Self") + "] " + (code != null ? code : "UnknownCloseCode[" + code + "]")
                             + (reason != null && !reason.isEmpty() ? ": " + reason : ""));
                 }
@@ -107,7 +107,7 @@ public class TcpPutComm implements CSProcess {
 
             @Override
             protected void onPong(WebSocketFrame pong) {
-                if (server.debug0) {
+                if (server.debug) {
                     System.out.println("P " + pong);
                 }
             }
@@ -119,14 +119,14 @@ public class TcpPutComm implements CSProcess {
 
             @Override
             protected void debugFrameReceived(WebSocketFrame frame) {
-                if (server.debug0) {
+                if (server.debug) {
                     System.out.println("R " + frame);
                 }
             }
 
             @Override
             protected void debugFrameSent(WebSocketFrame frame) {
-                if (server.debug0) {
+                if (server.debug) {
                     System.out.println("S " + frame);
                 }
             }
@@ -138,7 +138,7 @@ public class TcpPutComm implements CSProcess {
 
         private final DataOwner dataOwner;
 
-        private final boolean debug0 = true;
+        private final boolean debug = false;
 
         private final ChannelOutput<Advertisement> rxAdOut;
         private final FCClient<Void, Data> ldataCall;

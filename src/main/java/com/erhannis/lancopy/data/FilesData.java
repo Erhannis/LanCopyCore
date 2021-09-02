@@ -103,9 +103,6 @@ public class FilesData extends Data {
 
   @Override
   public InputStream serialize(boolean external) {
-    System.out.println("--> FilesData serialize");
-    Timing timing = new Timing();
-    try {
     if (files.length == 1 && !files[0].isDirectory()) {
       try {
         // This is a little cluttered
@@ -173,10 +170,6 @@ public class FilesData extends Data {
             e.printStackTrace();
         }
     });
-
-    } finally {
-        System.out.println("<-- FilesData serialize "+timing.stop());
-    }
   }
 
   public static JFileChooser fileChooser = new JFileChooser();
