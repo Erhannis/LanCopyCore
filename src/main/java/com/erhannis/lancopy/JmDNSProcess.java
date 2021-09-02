@@ -10,6 +10,7 @@ import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.ErrorData;
 import com.erhannis.lancopy.data.FilesData;
 import com.erhannis.lancopy.data.TextData;
+import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
 import java.util.Objects;
@@ -18,6 +19,7 @@ import java.util.logging.Logger;
 import javax.jmdns.JmDNS;
 import javax.jmdns.ServiceEvent;
 import javax.jmdns.ServiceListener;
+import javax.swing.JFileChooser;
 import okhttp3.OkHttpClient;
 import okhttp3.Request;
 import okhttp3.Response;
@@ -116,7 +118,8 @@ public class JmDNSProcess {
         case "application/octet-stream":
           return BinaryData.deserialize(response.body().byteStream());
         case "lancopy/files":
-          return FilesData.deserialize(response.body().byteStream());
+          //return FilesData.deserialize(response.body().byteStream());
+            throw new RuntimeException("Not yet refactored");
         default:
           return new ErrorData("Unhandled MIME: " + response.header("content-type"));
       }

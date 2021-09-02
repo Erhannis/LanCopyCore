@@ -24,6 +24,7 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.LinkedList;
 import java.util.Objects;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JFileChooser;
@@ -106,6 +107,7 @@ public class FilesData extends Data {
     if (files.length == 1 && !files[0].isDirectory()) {
       try {
         // This is a little cluttered
+        //TODO Oops - atm I don't record how long the files are, so we CAN'T directly include more than one, haha
         byte[] filenameBytes = files[0].getName().getBytes(UTF8);
         if (external) {
           return new FileInputStream(files[0]);
@@ -172,9 +174,7 @@ public class FilesData extends Data {
     });
   }
 
-  public static JFileChooser fileChooser = new JFileChooser();
-  
-  public synchronized static Data deserialize(InputStream stream) {
+  public synchronized static Data deserialize(InputStream stream, Function<String, File> filePicker) {
     try {
       int fileCount = Ints.fromByteArray(MeUtils.readNBytes(stream, 4));
       File[] files = new File[fileCount];
@@ -182,13 +182,9 @@ public class FilesData extends Data {
         int filenameLen = Ints.fromByteArray(MeUtils.readNBytes(stream, 4));
         String filename = new String(MeUtils.readNBytes(stream, filenameLen), UTF8);
         
-        //TODO Huh.  Should I really bring up a save gui in the middle of this code?
-        File f = new File(filename);
-        fileChooser.setSelectedFile(f);
-        if (fileChooser.showSaveDialog(null) == JFileChooser.APPROVE_OPTION) {
-          f = fileChooser.getSelectedFile();
-        } else {
-          throw new RuntimeException("File save canceled");
+        File f = filePicker.apply(filename);
+        if (f == null) {
+            throw new RuntimeException("File save canceled");
         }
 //        if (f.exists()) {
 //          throw new IllegalStateException("File already exists! " + filename);
