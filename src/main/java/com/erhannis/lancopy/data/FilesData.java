@@ -175,6 +175,7 @@ public class FilesData extends Data {
   }
 
   public synchronized static Data deserialize(InputStream stream, Function<String, File> filePicker) {
+    System.out.println("--> FilesData deserialize");
     try {
       int fileCount = Ints.fromByteArray(MeUtils.readNBytes(stream, 4));
       File[] files = new File[fileCount];
@@ -190,7 +191,9 @@ public class FilesData extends Data {
 //          throw new IllegalStateException("File already exists! " + filename);
 //        }
         //TODO Wait until all files named?
+        //TODO Uh...this copies the entire remaining stream.  Incompatible with "multiple files".
         FileUtils.copyInputStreamToFile(stream, f);
+        stream.close();
         files[i] = f;
       }
       System.out.println("Done deserializing files");
