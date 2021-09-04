@@ -17,6 +17,7 @@ import com.erhannis.mathnstuff.utils.Options;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import de.javakaffee.kryoserializers.UUIDSerializer;
 import de.javakaffee.kryoserializers.UnmodifiableCollectionsSerializer;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
@@ -58,6 +59,7 @@ public class DataOwner {
             kryo.register(TcpComm.class); //TODO Move these elsewhere?
             kryo.register(Summary.class);
             kryo.register(ArrayList.class);
+            kryo.register(UUID.class, new UUIDSerializer());
             UnmodifiableCollectionsSerializer.registerSerializers(kryo);
             //kryo.register(java.util.Collections.UnmodifiableRandomAccessList.class);
 
