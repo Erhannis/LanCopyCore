@@ -135,10 +135,14 @@ public class MulticastAdvertiser implements CSProcess {
 
     private final DataOwner dataOwner;
 
+    private final String address;
+    private final int port;
     private final ChannelOutput<Advertisement> rxAdOut;
     private final AltingChannelInput<Advertisement> txAdIn;
 
-    public MulticastAdvertiser(DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, AltingChannelInput<Advertisement> txAdIn) throws IOException {
+    public MulticastAdvertiser(String address, int port, DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, AltingChannelInput<Advertisement> txAdIn) throws IOException {
+        this.address = address;
+        this.port = port;
         this.dataOwner = dataOwner;
         this.rxAdOut = rxAdOut;
         this.txAdIn = txAdIn;
@@ -146,8 +150,6 @@ public class MulticastAdvertiser implements CSProcess {
 
     @Override
     public void run() {
-        int port = (int) dataOwner.options.getOrDefault("Multicast.port", 12113);
-        String address = (String) dataOwner.options.getOrDefault("Multicast.address", "234.119.187.64");
         dataOwner.errOnce("MulticastAdvertiser //TODO Deal with multiple interfaces?");
 
         MulticastReceiver mr = new MulticastReceiver(port, address);

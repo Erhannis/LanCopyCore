@@ -82,12 +82,18 @@ public class LanCopyNet {
         
         //TODO Maybe put the summary Call in the NodeTracker
         
+        int ipv4port = (int) dataOwner.options.getOrDefault("Multicast.ipv4.port", 12113);
+        String ipv4address = (String) dataOwner.options.getOrDefault("Multicast.ipv4.address", "234.119.187.64");
+        int ipv6port = (int) dataOwner.options.getOrDefault("Multicast.ipv6.port", 12114);
+        String ipv6address = (String) dataOwner.options.getOrDefault("Multicast.ipv6.address", "[ff02::01]"); //TODO Figure out port
+        
         new ProcessManager(new Parallel(new CSProcess[]{
             adUpdatedSplitter,
             summaryUpdatedSplitter,
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
-            new MulticastAdvertiser(dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
+            new MulticastAdvertiser(ipv4address, ipv4port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
+            new MulticastAdvertiser(ipv6address, ipv6port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
             new TcpGetComm(dataOwner, subscribeIn, pokeIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
             new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
             new AdGenerator(dataOwner, rxAdOut, commsIn)
