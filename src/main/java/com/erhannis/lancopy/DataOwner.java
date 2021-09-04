@@ -39,7 +39,12 @@ import okhttp3.OkHttpClient;
  * @author erhannis
  */
 public class DataOwner {
-    public final String ID = "LanCopy-" + UUID.randomUUID();
+    /**
+     * This is the protocol UUID.  Wherever the idea of LanCopy needs to be (or can be) identified by a UUID, this is the one to use.
+     */
+    public static final UUID LANCOPY_SERVICE = UUID.fromString("66e8b86b-5868-4b8e-8f6f-d2845616d72c");
+    
+    public final UUID ID = UUID.randomUUID();
 
     public final Options options;
 

@@ -30,6 +30,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Queue;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -142,10 +143,10 @@ public class TcpPutComm implements CSProcess {
 
         private final ChannelOutput<Advertisement> rxAdOut;
         private final FCClient<Void, Data> ldataCall;
-        private final FCClient<String, Summary> summaryCall;
+        private final FCClient<UUID, Summary> summaryCall;
         private final FCClient<Void, List<Advertisement>> rosterCall;
 
-        public DebugWebSocketServer(int port, DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
+        public DebugWebSocketServer(int port, DataOwner dataOwner, ChannelOutput<Advertisement> rxAdOut, FCClient<Void, Data> ldataCall, FCClient<UUID, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
             super(port);
             this.rxAdOut = rxAdOut;
             this.dataOwner = dataOwner;
@@ -286,10 +287,10 @@ public class TcpPutComm implements CSProcess {
     private final AltingChannelInput<Advertisement> txRosterIn;
     private final AltingChannelInput<Summary> txLSummaryIn;
     private final FCClient<Void, Data> ldataCall;
-    private final FCClient<String, Summary> summaryCall;
+    private final FCClient<UUID, Summary> summaryCall;
     private final FCClient<Void, List<Advertisement>> rosterCall;
 
-    public TcpPutComm(DataOwner dataOwner, ChannelOutput<List<Comm>> commsOut, ChannelOutput<Advertisement> rxAdOut, AltingChannelInput<Advertisement> txRosterIn, AltingChannelInput<Summary> txLSummaryIn, FCClient<Void, Data> ldataCall, FCClient<String, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
+    public TcpPutComm(DataOwner dataOwner, ChannelOutput<List<Comm>> commsOut, ChannelOutput<Advertisement> rxAdOut, AltingChannelInput<Advertisement> txRosterIn, AltingChannelInput<Summary> txLSummaryIn, FCClient<Void, Data> ldataCall, FCClient<UUID, Summary> summaryCall, FCClient<Void, List<Advertisement>> rosterCall) {
         this.dataOwner = dataOwner;
         this.commsOut = commsOut;
         this.rxAdOut = rxAdOut;

@@ -11,6 +11,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map.Entry;
+import java.util.UUID;
 import java.util.function.Supplier;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.FCServer;
@@ -39,29 +40,29 @@ public class NodeTracker implements CSProcess {
 
     private final ChannelOutput<Advertisement> adUpdatedOut;
     private final ChannelOutput<Summary> summaryUpdatedOut;
-    private final AltingFCServer<String, Advertisement> adCallServer;
-    private final AltingFCServer<String, Summary> summaryCallServer;
+    private final AltingFCServer<UUID, Advertisement> adCallServer;
+    private final AltingFCServer<UUID, Summary> summaryCallServer;
     private final AltingFCServer<Void, List<Advertisement>> rosterCallServer;
     private final AltingChannelInput<Advertisement> adIn;
     private final AltingChannelInput<Summary> summaryIn;
     private final AltingChannelInputInt joinIn;
     private final AltingChannelOutputInt joinOut;
 
-    private FactoryHashMap<String, HashSet<Advertisement>> ads = new FactoryHashMap<>(new Factory<String, HashSet<Advertisement>>() {
+    private FactoryHashMap<UUID, HashSet<Advertisement>> ads = new FactoryHashMap<>(new Factory<UUID, HashSet<Advertisement>>() {
         @Override
-        public HashSet<Advertisement> construct(String input) {
+        public HashSet<Advertisement> construct(UUID input) {
             return new HashSet<Advertisement>();
         }
     });
 
-    private FactoryHashMap<String, HashSet<Summary>> summarys = new FactoryHashMap<>(new Factory<String, HashSet<Summary>>() {
+    private FactoryHashMap<UUID, HashSet<Summary>> summarys = new FactoryHashMap<>(new Factory<UUID, HashSet<Summary>>() {
         @Override
-        public HashSet<Summary> construct(String input) {
+        public HashSet<Summary> construct(UUID input) {
             return new HashSet<Summary>();
         }
     });
     
-    public NodeTracker(ChannelOutput<Advertisement> adUpdatedOut, ChannelOutput<Summary> summaryUpdatedOut, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingFCServer<String, Advertisement> adCallServer, AltingFCServer<String, Summary> summaryCallServer, AltingFCServer<Void, List<Advertisement>> rosterCallServer) {
+    public NodeTracker(ChannelOutput<Advertisement> adUpdatedOut, ChannelOutput<Summary> summaryUpdatedOut, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingFCServer<UUID, Advertisement> adCallServer, AltingFCServer<UUID, Summary> summaryCallServer, AltingFCServer<Void, List<Advertisement>> rosterCallServer) {
         this.adUpdatedOut = adUpdatedOut;
         this.summaryUpdatedOut = summaryUpdatedOut;        
         this.adIn = adIn;
@@ -113,7 +114,7 @@ public class NodeTracker implements CSProcess {
                         break;
                     case 3: // adCallServer
                     {
-                        String id = adCallServer.startRead();
+                        UUID id = adCallServer.startRead();
                         HashSet<Advertisement> versions = ads.get(id);
                         Advertisement max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
                         adCallServer.endRead(max);
@@ -121,7 +122,7 @@ public class NodeTracker implements CSProcess {
                     }
                     case 4: // summaryCallServer
                     {
-                        String id = summaryCallServer.startRead();
+                        UUID id = summaryCallServer.startRead();
                         HashSet<Summary> versions = summarys.get(id);
                         Summary max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
                         summaryCallServer.endRead(max);
@@ -131,7 +132,7 @@ public class NodeTracker implements CSProcess {
                     {
                         rosterCallServer.startRead();
                         ArrayList<Advertisement> roster = new ArrayList<>();
-                        for (Entry<String, HashSet<Advertisement>> e : ads.entrySet()) {
+                        for (Entry<UUID, HashSet<Advertisement>> e : ads.entrySet()) {
                             HashSet<Advertisement> versions = ads.get(e.getKey());
                             Advertisement max = versions.stream().max((a, b) -> Long.compare(a.timestamp, b.timestamp)).orElse(null);
                             roster.add(max);

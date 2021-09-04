@@ -7,17 +7,18 @@ package com.erhannis.lancopy.refactor;
 
 import com.erhannis.mathnstuff.MeUtils;
 import java.util.Objects;
+import java.util.UUID;
 
 /**
  *
  * @author erhannis
  */
 public class Summary {
-    public final String id;
+    public final UUID id;
     public final long timestamp;
     public final String summary;
 
-    public Summary(String id, long timestamp, String summary) {
+    public Summary(UUID id, long timestamp, String summary) {
         this.id = id;
         this.timestamp = timestamp;
         this.summary = summary;

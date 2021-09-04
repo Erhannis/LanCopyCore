@@ -10,6 +10,7 @@ import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.stream.Collectors;
 
 /**
@@ -17,11 +18,11 @@ import java.util.stream.Collectors;
  * @author erhannis
  */
 public class Advertisement {    
-    public final String id;
+    public final UUID id;
     public final long timestamp;
     public final List<Comm> comms;
 
-    public Advertisement(String id, long timestamp, List<Comm> comms) {
+    public Advertisement(UUID id, long timestamp, List<Comm> comms) {
         this.id = id;
         this.timestamp = timestamp;
         this.comms = Collections.unmodifiableList(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));

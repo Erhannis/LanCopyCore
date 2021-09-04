@@ -75,7 +75,7 @@ public class JmDNSProcess {
 
       if (1==1) throw new RuntimeException("//TODO BROKEN");
       int PORT = -1;
-      zcService0 = new Service(dataOwner.ID, "lancopy", PORT);
+      zcService0 = new Service(dataOwner.ID.toString(), "lancopy", PORT);
       zeroconf0.announce(zcService0);
     } catch (IOException ex) {
       Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);

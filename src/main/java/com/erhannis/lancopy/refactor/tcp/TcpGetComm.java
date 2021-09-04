@@ -20,6 +20,7 @@ import java.net.SocketTimeoutException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
+import java.util.UUID;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import jcsp.helpers.FCClient;
@@ -187,10 +188,10 @@ public class TcpGetComm implements CSProcess {
     private final ChannelOutput<Summary> summaryOut;
     private final ChannelOutput<Advertisement> rosterOut;
     private final AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall;
-    private final FCClient<String, Advertisement> adCall;
+    private final FCClient<UUID, Advertisement> adCall;
     private final ChannelOutput<Pair<Comm, Boolean>> statusOut;
 
-    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, AltingChannelInput<Collection<Comm>> pokeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<String, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
+    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, AltingChannelInput<Collection<Comm>> pokeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<UUID, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
         this.dataOwner = dataOwner;
         this.pokeIn = pokeIn;
         this.subscribeIn = subscribeIn;

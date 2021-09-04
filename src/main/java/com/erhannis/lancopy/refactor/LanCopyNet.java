@@ -74,9 +74,9 @@ public class LanCopyNet {
         SynchronousSplitter<Advertisement> adUpdatedSplitter = new SynchronousSplitter<>();
         SynchronousSplitter<Summary> summaryUpdatedSplitter = new SynchronousSplitter<>();
         
-        AltingFunctionChannel<String, Advertisement> adCall = new AltingFunctionChannel<>(true);
+        AltingFunctionChannel<UUID, Advertisement> adCall = new AltingFunctionChannel<>(true);
         AltingFunctionChannel<List<Comm>, Pair<String, InputStream>> dataCall = new AltingFunctionChannel<>(true);
-        AltingFunctionChannel<String, Summary> summaryCall = new AltingFunctionChannel<>(true);
+        AltingFunctionChannel<UUID, Summary> summaryCall = new AltingFunctionChannel<>(true);
         AltingFunctionChannel<Void, List<Advertisement>> rosterCall = new AltingFunctionChannel<>(true);
         AltingFunctionChannel<Void, Data> localDataCall = new AltingFunctionChannel<>(true);
         
@@ -111,9 +111,9 @@ public class LanCopyNet {
         public final ChannelOutput<Collection<Comm>> pokeOut;
         public final FCClient<List<Comm>, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
-        public final FCClient<String, Advertisement> adCall;
+        public final FCClient<UUID, Advertisement> adCall;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<String, Advertisement> adCall) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
