@@ -1,4 +1,5 @@
 share info about other nodes
+  It sortof is, but not very robustly
 share data through mesh
 alternate methods of communication
   optionize which interfaces
