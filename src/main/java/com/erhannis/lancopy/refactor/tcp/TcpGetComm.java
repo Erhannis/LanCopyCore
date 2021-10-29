@@ -185,15 +185,17 @@ public class TcpGetComm implements CSProcess {
 
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final AltingChannelInput<Collection<Comm>> pokeIn;
+    private final AltingChannelInput<String> getRosterIn;
     private final ChannelOutput<Summary> summaryOut;
     private final ChannelOutput<Advertisement> rosterOut;
     private final AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall;
     private final FCClient<UUID, Advertisement> adCall;
     private final ChannelOutput<Pair<Comm, Boolean>> statusOut;
 
-    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, AltingChannelInput<Collection<Comm>> pokeIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<UUID, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
+    public TcpGetComm(DataOwner dataOwner, AltingChannelInput<List<Comm>> subscribeIn, AltingChannelInput<Collection<Comm>> pokeIn, AltingChannelInput<String> getRosterIn, ChannelOutput<Summary> summaryOut, ChannelOutput<Advertisement> rosterOut, AltingFCServer<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<UUID, Advertisement> adCall, ChannelOutput<Pair<Comm, Boolean>> statusOut) {
         this.dataOwner = dataOwner;
         this.pokeIn = pokeIn;
+        this.getRosterIn = getRosterIn;
         this.subscribeIn = subscribeIn;
         this.summaryOut = summaryOut;
         this.rosterOut = rosterOut;
@@ -211,16 +213,17 @@ public class TcpGetComm implements CSProcess {
         Any2OneChannel<Pair<Comm, Boolean>> internalStatusChannel = Channel.<Pair<Comm, Boolean>>any2one(0);
 
         // Used both in the WsClient and in some of the one-off threads down below
+        ChannelOutput<List<Advertisement>> internalRosterOut = JcspUtils.logDeadlock(internalRosterChannel.out());
         ChannelOutput<Pair<Comm, Boolean>> internalStatusOut = JcspUtils.logDeadlock(internalStatusChannel.out());
         
-        WsClient wc = new WsClient(dataOwner, JcspUtils.logDeadlock(internalSummaryChannel.out()), JcspUtils.logDeadlock(internalRosterChannel.out()), internalStatusOut);
+        WsClient wc = new WsClient(dataOwner, JcspUtils.logDeadlock(internalSummaryChannel.out()), internalRosterOut, internalStatusOut);
 
         AltingChannelInput<Summary> internalSummaryIn = internalSummaryChannel.in();
         AltingChannelInput<List<Advertisement>> internalRosterIn = internalRosterChannel.in();
         AltingChannelInput<Pair<Comm, Boolean>> internalStatusIn = internalStatusChannel.in();
 
         // Fetch process
-        Alternative alt = new Alternative(new Guard[]{dataCall, subscribeIn, pokeIn, internalSummaryIn, internalRosterIn, internalStatusIn});
+        Alternative alt = new Alternative(new Guard[]{dataCall, subscribeIn, pokeIn, getRosterIn, internalSummaryIn, internalRosterIn, internalStatusIn});
         try {
             while (true) {
                 switch (alt.priSelect()) {
@@ -439,12 +442,35 @@ public class TcpGetComm implements CSProcess {
                         }
                         break;
                     }
-                    case 3: // internalSummaryIn
+                    case 3: // getRosterIn
+                    {
+                        String url = getRosterIn.read();
+                        try {
+                            new ProcessManager(() -> {
+                                Request request = new Request.Builder().get().url(url).build();
+                                try (Response response = dataOwner.ohClient.newCall(request).execute()) {
+                                    List<Advertisement> roster = (List<Advertisement>)dataOwner.deserialize(response.body().bytes());
+                                    internalRosterOut.write(roster);
+                                    return;
+                                } catch (ConnectException | NoRouteToHostException e) {
+                                    MeUtils.getStackTrace(e.getMessage()).printStackTrace();
+                                } catch (SocketTimeoutException e) {
+                                    MeUtils.getStackTrace(e.getMessage()).printStackTrace();
+                                } catch (IOException e) {
+                                    e.printStackTrace();
+                                }
+                            }).start();
+                        } catch (Throwable e) {
+                            e.printStackTrace();
+                        }
+                        break;
+                    }
+                    case 4: // internalSummaryIn
                     {
                         summaryOut.write(internalSummaryIn.read());
                         break;
                     }
-                    case 4: // internalRosterIn
+                    case 5: // internalRosterIn
                     {
                         List<Advertisement> roster = internalRosterIn.read();
                         //TODO Compactify?  Tracker might be more efficient that way.  Maybe.
@@ -453,7 +479,7 @@ public class TcpGetComm implements CSProcess {
                         }
                         break;
                     }
-                    case 5: // internalStatusIn
+                    case 6: // internalStatusIn
                     {
                         statusOut.write(internalStatusIn.read());
                         break;

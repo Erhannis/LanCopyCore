@@ -70,6 +70,10 @@ public class LanCopyNet {
         AltingChannelInput<Collection<Comm>> pokeIn = pokeChannel.in();
         ChannelOutput<Collection<Comm>> pokeOut = JcspUtils.logDeadlock(pokeChannel.out());
 
+        Any2OneChannel<String> getRosterChannel = Channel.<String> any2one(new InfiniteBuffer<>());
+        AltingChannelInput<String> getRosterIn = getRosterChannel.in();
+        ChannelOutput<String> getRosterOut = JcspUtils.logDeadlock(getRosterChannel.out());
+        
         
         SynchronousSplitter<Advertisement> adUpdatedSplitter = new SynchronousSplitter<>();
         SynchronousSplitter<Summary> summaryUpdatedSplitter = new SynchronousSplitter<>();
@@ -94,11 +98,11 @@ public class LanCopyNet {
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
             new MulticastAdvertiser(ipv4address, ipv4port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
             new MulticastAdvertiser(ipv6address, ipv6port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
-            new TcpGetComm(dataOwner, subscribeIn, pokeIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
+            new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
             new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
             new AdGenerator(dataOwner, rxAdOut, commsIn)
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, pokeOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, pokeOut, getRosterOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }
 
     public static class UiInterface {
@@ -109,11 +113,12 @@ public class LanCopyNet {
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
         public final ChannelOutput<Collection<Comm>> pokeOut;
+        public final ChannelOutput<String> getRosterOut;
         public final FCClient<List<Comm>, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, ChannelOutput<String> getRosterOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
@@ -121,6 +126,7 @@ public class LanCopyNet {
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
             this.pokeOut = pokeOut;
+            this.getRosterOut = getRosterOut;
             this.dataCall = dataCall;
             this.rosterCall = rosterCall;
             this.adCall = adCall;

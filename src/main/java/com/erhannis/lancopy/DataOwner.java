@@ -30,6 +30,7 @@ import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Properties;
 import java.util.UUID;
+import java.util.concurrent.TimeUnit;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
@@ -66,10 +67,15 @@ public class DataOwner {
             return kryo;
         }
     };
-    public final OkHttpClient ohClient = new OkHttpClient();
+    public final OkHttpClient ohClient;
 
     public DataOwner() {
         this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
+        this.ohClient = new OkHttpClient.Builder()
+                .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
+                .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
+                .readTimeout((Integer) options.getOrDefault("OkHttp.READ_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
+                .build();
     }
 
     public byte[] serialize(Object o) {
