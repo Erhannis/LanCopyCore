@@ -86,10 +86,13 @@ public class LanCopyNet {
         
         //TODO Maybe put the summary Call in the NodeTracker
         
+        //TODO Should I just use the same port across all of them?
         int ipv4port = (int) dataOwner.options.getOrDefault("Multicast.ipv4.port", 12113);
         String ipv4address = (String) dataOwner.options.getOrDefault("Multicast.ipv4.address", "234.119.187.64");
         int ipv6port = (int) dataOwner.options.getOrDefault("Multicast.ipv6.port", 12114);
         String ipv6address = (String) dataOwner.options.getOrDefault("Multicast.ipv6.address", "[ff05:acbc:d10a:5fa4:9dac:4ff5:3dbe:aacc]"); //TODO Figure out port
+        int broadcastPort = (int) dataOwner.options.getOrDefault("Broadcast.port", 12115);
+        //TODO Allow specified broadcast addresses?
         
         new ProcessManager(new Parallel(new CSProcess[]{
             adUpdatedSplitter,
@@ -98,6 +101,7 @@ public class LanCopyNet {
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
             new MulticastAdvertiser(ipv4address, ipv4port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
             new MulticastAdvertiser(ipv6address, ipv6port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
+            new BroadcastAdvertiser(null, broadcastPort, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
             new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
             new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
             new AdGenerator(dataOwner, rxAdOut, commsIn)
