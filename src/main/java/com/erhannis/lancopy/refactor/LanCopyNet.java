@@ -89,7 +89,7 @@ public class LanCopyNet {
         int ipv4port = (int) dataOwner.options.getOrDefault("Multicast.ipv4.port", 12113);
         String ipv4address = (String) dataOwner.options.getOrDefault("Multicast.ipv4.address", "234.119.187.64");
         int ipv6port = (int) dataOwner.options.getOrDefault("Multicast.ipv6.port", 12114);
-        String ipv6address = (String) dataOwner.options.getOrDefault("Multicast.ipv6.address", "[ff02::01]"); //TODO Figure out port
+        String ipv6address = (String) dataOwner.options.getOrDefault("Multicast.ipv6.address", "[ff05:acbc:d10a:5fa4:9dac:4ff5:3dbe:aacc]"); //TODO Figure out port
         
         new ProcessManager(new Parallel(new CSProcess[]{
             adUpdatedSplitter,
