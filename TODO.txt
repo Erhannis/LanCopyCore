@@ -44,3 +44,5 @@ close okhttp resources?
 Data permit plain reading, particularly FilesData
 print git hash
 summary limit
+
+rsync directories

@@ -17,10 +17,11 @@ import java.util.stream.Collectors;
  *
  * @author erhannis
  */
-public class Advertisement {    
+public class Advertisement {
     public final UUID id;
     public final long timestamp;
     public final List<Comm> comms;
+    //TODO SECURITY Sign own Advertisement
 
     public Advertisement(UUID id, long timestamp, List<Comm> comms) {
         this.id = id;

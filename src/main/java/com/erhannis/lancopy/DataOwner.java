@@ -10,6 +10,8 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
+import com.erhannis.lancopy.security.AsymmetricEncryption;
+import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.components.OptionsFrame;
 import com.erhannis.mathnstuff.utils.Observable;
 import com.erhannis.mathnstuff.utils.ObservableMap;
@@ -17,6 +19,7 @@ import com.erhannis.mathnstuff.utils.Options;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
+import com.google.crypto.tink.KeysetHandle;
 import de.javakaffee.kryoserializers.UUIDSerializer;
 import de.javakaffee.kryoserializers.UnmodifiableCollectionsSerializer;
 import java.io.ByteArrayInputStream;
@@ -26,6 +29,9 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.security.GeneralSecurityException;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Properties;
@@ -68,6 +74,8 @@ public class DataOwner {
         }
     };
     public final OkHttpClient ohClient;
+    public final AsymmetricEncryption.PrivateContext privateContext;
+    public final AsymmetricEncryption.PublicContext publicContext;
 
     public DataOwner() {
         this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
@@ -76,6 +84,34 @@ public class DataOwner {
                 .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .readTimeout((Integer) options.getOrDefault("OkHttp.READ_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .build();
+        if ((Boolean)options.getOrDefault("Security.ENCRYPTION", true)) {
+            String privateKeyPath = (String) options.getOrDefault("Security.PRIVATE_KEY_PATH", "private.key");
+            AsymmetricEncryption.PrivateContext privateContext = null;
+            AsymmetricEncryption.PublicContext publicContext = null;
+            try {
+                File pkf = new File(privateKeyPath);
+                if (!pkf.exists()) {
+                    privateContext = AsymmetricEncryption.generateContext();
+                    //TODO Permit master password in Options?
+                    Files.write(pkf.toPath(), AsymmetricEncryption.savePrivate(privateContext)); //TODO Error on now-already-exists?
+                    publicContext = AsymmetricEncryption.privateToPublic(privateContext);
+                } else {
+                    //TODO Permit master password in Options?
+                    privateContext = AsymmetricEncryption.loadPrivate(Files.readAllBytes(pkf.toPath()));
+                    publicContext = AsymmetricEncryption.privateToPublic(privateContext);
+                }
+            } catch (IOException | GeneralSecurityException ex) {
+                privateContext = null;
+                publicContext = null;
+                System.err.println("SECURITY ERROR!  Problem loading/generating private key!");
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            this.privateContext = privateContext;
+            this.publicContext = publicContext;
+        } else {
+            privateContext = null;
+            publicContext = null;
+        }
     }
 
     public byte[] serialize(Object o) {
