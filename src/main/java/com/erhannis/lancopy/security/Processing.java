@@ -8,12 +8,20 @@ import com.erhannis.lancopy.DataOwner;
 import com.erhannis.mathnstuff.MeUtils;
 import com.google.common.primitives.Bytes;
 import com.google.common.primitives.Ints;
+import com.google.crypto.tink.Aead;
 import com.google.crypto.tink.BinaryKeysetReader;
+import com.google.crypto.tink.BinaryKeysetWriter;
 import com.google.crypto.tink.CleartextKeysetHandle;
 import com.google.crypto.tink.KeysetHandle;
-import com.google.crypto.tink.PublicKeySign;
+import com.google.crypto.tink.StreamingAead;
+import com.google.crypto.tink.aead.AesGcmKeyManager;
+import com.google.crypto.tink.streamingaead.AesGcmHkdfStreamingKeyManager;
+import com.google.crypto.tink.streamingaead.StreamingAeadKeyTemplates;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.SequenceInputStream;
 import java.security.GeneralSecurityException;
 
 /**
@@ -21,7 +29,7 @@ import java.security.GeneralSecurityException;
  *
  * @author erhannis
  */
-public class Process {
+public class Processing {
 
     /**
      * Do processing for outgoing message.<br/>
@@ -95,5 +103,20 @@ public class Process {
         } else {
             return message;
         }
+    }
+
+    public static InputStream outgoing(DataOwner dataOwner, InputStream message, AsymmetricEncryption.PublicContext targetPublicContext) throws GeneralSecurityException, IOException {
+        //TODO SECURITY Bigger key size?
+        KeysetHandle instanceKey = KeysetHandle.generateNew(AesGcmHkdfStreamingKeyManager.aes128GcmHkdf1MBTemplate());
+        ByteArrayOutputStream baos = new ByteArrayOutputStream();
+        CleartextKeysetHandle.write(instanceKey, BinaryKeysetWriter.withOutputStream(baos));
+        targetPublicContext.hybridEncrypt.encrypt(baos.toByteArray(), null);
+        StreamingAead sa = instanceKey.getPrimitive(StreamingAead.class);
+        
+        return null;
+    }
+
+    public static InputStream incoming(DataOwner dataOwner, InputStream message, AsymmetricEncryption.PublicContext originPublicContext) throws GeneralSecurityException, IOException {
+        return null;
     }
 }

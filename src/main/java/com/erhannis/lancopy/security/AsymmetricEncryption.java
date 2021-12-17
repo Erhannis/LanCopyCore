@@ -28,6 +28,7 @@ import com.google.crypto.tink.proto.EllipticCurveType;
 import com.google.crypto.tink.proto.HashType;
 import com.google.crypto.tink.proto.OutputPrefixType;
 import com.google.crypto.tink.signature.SignatureConfig;
+import com.google.crypto.tink.streamingaead.StreamingAeadConfig;
 import com.google.crypto.tink.subtle.AesGcmJce;
 import com.google.crypto.tink.subtle.Bytes;
 import java.io.ByteArrayInputStream;
@@ -90,6 +91,7 @@ public class AsymmetricEncryption {
   static {
     try {
       AeadConfig.register();
+      StreamingAeadConfig.register();
       HybridConfig.register();
       SignatureConfig.register();
       MASTER = getMaster();
@@ -237,8 +239,8 @@ public class AsymmetricEncryption {
     KeysetHandle publicKeysetHandle = privateKeysetHandle.getPublicKeysetHandle();
     HybridEncrypt hybridEncrypt = publicKeysetHandle.getPrimitive(HybridEncrypt.class);
     HybridDecrypt hybridDecrypt = privateKeysetHandle.getPrimitive(HybridDecrypt.class);
-    PublicKeySign privateKeySign = ctx.privateCKey.getPrimitive(PublicKeySign.class);
-    PublicKeyVerify publicKeyVerify = ctx.publicCKey.getPrimitive(PublicKeyVerify.class);
+    PublicKeySign privateKeySign = privateKeysetHandle.getPrimitive(PublicKeySign.class);
+    PublicKeyVerify publicKeyVerify = publicKeysetHandle.getPrimitive(PublicKeyVerify.class);
 
     ctx.privateCKey = privateKeysetHandle;
     ctx.publicCKey = publicKeysetHandle;

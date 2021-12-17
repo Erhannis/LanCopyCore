@@ -20,12 +20,14 @@ import java.util.stream.Collectors;
 public class Advertisement {
     public final UUID id;
     public final long timestamp;
+    public final boolean encryption;
     public final List<Comm> comms;
     //TODO SECURITY Sign own Advertisement
 
-    public Advertisement(UUID id, long timestamp, List<Comm> comms) {
+    public Advertisement(UUID id, long timestamp, boolean encryption, List<Comm> comms) {
         this.id = id;
         this.timestamp = timestamp;
+        this.encryption = encryption;
         this.comms = Collections.unmodifiableList(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
         //this.comms = new ArrayList<>(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
     }
@@ -33,6 +35,7 @@ public class Advertisement {
     private Advertisement() {
         this.id = null;
         this.timestamp = 0;
+        this.encryption = false;
         this.comms = null;
     }
 
@@ -42,7 +45,7 @@ public class Advertisement {
             return false;
         }
         Advertisement o = (Advertisement)obj;
-        if (!Objects.equals(this.id, o.id) || this.timestamp != o.timestamp || !Objects.deepEquals(this.comms, o.comms)) {
+        if (!Objects.equals(this.id, o.id) || this.timestamp != o.timestamp || this.encryption != o.encryption || !Objects.deepEquals(this.comms, o.comms)) {
             return false;
         }
         return true;
@@ -50,7 +53,7 @@ public class Advertisement {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, timestamp, comms);
+        return Objects.hash(id, timestamp, encryption, comms);
     }
 
     @Override

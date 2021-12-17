@@ -74,6 +74,7 @@ public class DataOwner {
         }
     };
     public final OkHttpClient ohClient;
+    public final boolean encryption;
     public final AsymmetricEncryption.PrivateContext privateContext;
     public final AsymmetricEncryption.PublicContext publicContext;
 
@@ -84,7 +85,8 @@ public class DataOwner {
                 .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .readTimeout((Integer) options.getOrDefault("OkHttp.READ_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .build();
-        if ((Boolean)options.getOrDefault("Security.ENCRYPTION", true)) {
+        this.encryption = (Boolean)options.getOrDefault("Security.ENCRYPTION", true);
+        if (encryption) {
             String privateKeyPath = (String) options.getOrDefault("Security.PRIVATE_KEY_PATH", "private.key");
             AsymmetricEncryption.PrivateContext privateContext = null;
             AsymmetricEncryption.PublicContext publicContext = null;

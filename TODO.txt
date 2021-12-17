@@ -1,3 +1,12 @@
+SECURITY
+  sign own Advertisement
+  encrypt Summary
+  encrypt Data
+  permit anonymous Data request?
+  whitelist nodes
+  verify addressee
+  request nonces?
+
 share info about other nodes
   It sortof is, but not very robustly
 share data through mesh

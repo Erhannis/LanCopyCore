@@ -32,7 +32,7 @@ public class AdGenerator implements CSProcess {
     
     @Override
     public void run() {
-        Advertisement ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), new ArrayList<>());
+        Advertisement ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), dataOwner.encryption, new ArrayList<>());
         try {
             Alternative alt = new Alternative(new Guard[]{commsIn});
             while (true) {
@@ -41,7 +41,7 @@ public class AdGenerator implements CSProcess {
                         List<Comm> comms = commsIn.read();
                         ArrayList<Comm> combined = new ArrayList<>(comms);
                         combined.addAll(ad.comms);
-                        ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), combined);
+                        ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), dataOwner.encryption, combined);
                         adOut.write(ad);
                         break;
                 }

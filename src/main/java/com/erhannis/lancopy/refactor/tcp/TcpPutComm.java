@@ -213,10 +213,12 @@ public class TcpPutComm implements CSProcess {
                 }
                 case "/get/data": {
                     Data data = ldataCall.call(null);
+                    //TODO SECURITY Encrypt
                     return newChunkedResponse(Status.OK, data.getMime(false), data.serialize(false));
                 }
                 case "/data": {
                     Data data = ldataCall.call(null);
+                    //TODO SECURITY Encrypt
                     return newChunkedResponse(Status.OK, data.getMime(true), data.serialize(true));
                 }
                 case "/get/roster": {
