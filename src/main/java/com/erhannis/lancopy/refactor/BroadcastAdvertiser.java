@@ -124,8 +124,8 @@ public class BroadcastAdvertiser implements CSProcess {
             this.port = port;
         }
 
-        public void broadcast(byte[] multicastMessage) throws IOException {
-            DatagramPacket packet = new DatagramPacket(multicastMessage, multicastMessage.length, group, port);
+        public void broadcast(byte[] broadcastMessage) throws IOException {
+            DatagramPacket packet = new DatagramPacket(broadcastMessage, broadcastMessage.length, group, port);
             socket.send(packet);
             //socket.close(); //TODO ??
         }

@@ -17,22 +17,28 @@ import java.util.stream.Collectors;
  *
  * @author erhannis
  */
-public class Advertisement {    
+public class Advertisement {
     public final UUID id;
     public final long timestamp;
     public final List<Comm> comms;
+    public final boolean encrypted;
+    public final String fingerprint;
 
-    public Advertisement(UUID id, long timestamp, List<Comm> comms) {
+    public Advertisement(UUID id, long timestamp, List<Comm> comms, boolean encrypted, String fingerprint) {
         this.id = id;
         this.timestamp = timestamp;
         this.comms = Collections.unmodifiableList(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
         //this.comms = new ArrayList<>(comms.stream().map(c -> c.copyToOwner(this)).collect(Collectors.toList()));
+        this.encrypted = encrypted;
+        this.fingerprint = fingerprint;
     }
     
     private Advertisement() {
         this.id = null;
         this.timestamp = 0;
         this.comms = null;
+        this.encrypted = false;
+        this.fingerprint = null;
     }
 
     @Override
@@ -41,7 +47,11 @@ public class Advertisement {
             return false;
         }
         Advertisement o = (Advertisement)obj;
-        if (!Objects.equals(this.id, o.id) || this.timestamp != o.timestamp || !Objects.deepEquals(this.comms, o.comms)) {
+        if (!Objects.equals(this.id, o.id)
+                || this.timestamp != o.timestamp
+                || !Objects.deepEquals(this.comms, o.comms)
+                || this.encrypted != o.encrypted
+                || !Objects.deepEquals(this.fingerprint, o.fingerprint)) {
             return false;
         }
         return true;
@@ -49,11 +59,11 @@ public class Advertisement {
 
     @Override
     public int hashCode() {
-        return Objects.hash(id, timestamp, comms);
+        return Objects.hash(id, timestamp, comms, encrypted, fingerprint);
     }
 
     @Override
     public String toString() {
-        return "Ad{"+id+","+timestamp+",["+MeUtils.join(",",comms)+"]}";
+        return "Ad{"+id+","+encrypted+"("+fingerprint+"),"+timestamp+",["+MeUtils.join(",",comms)+"]}";
     }
 }

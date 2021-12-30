@@ -258,7 +258,7 @@ public class TcpGetComm implements CSProcess {
                                             AltingBarrier bar = failureBarrier.expand();
                                             attempts.add(new DThread(() -> {
                                                 bar.mark();
-                                                System.out.println("-->Poke call " + comm);
+                                                System.out.println("-->Request call " + comm);
                                                 Request request = new Request.Builder().url(new HttpUrl.Builder().scheme(tc.scheme).host(tc.host).port(tc.port).addPathSegments("get/data").build()).build();
                                                 try {
                                                     Response response = dataOwner.ohClient.newCall(request).execute();
