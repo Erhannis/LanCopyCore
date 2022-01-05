@@ -32,7 +32,7 @@ public class AdGenerator implements CSProcess {
     
     @Override
     public void run() {
-        Advertisement ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), new ArrayList<>());
+        Advertisement ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), new ArrayList<>(), dataOwner.);
         try {
             Alternative alt = new Alternative(new Guard[]{commsIn});
             while (true) {

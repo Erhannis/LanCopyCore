@@ -39,6 +39,7 @@ Advertise
   QR
   Wifi hotspot?
   RFID
+  ...File?  XP
   
 !change interrupted processes to cancelable socket calls
 close okhttp resources?
@@ -52,6 +53,7 @@ Ok, after messing with encryption and then thinking about how I'd need to
 integrate it, I think the system needs reworked.  Again.
 It is wrong that the TCP system has REST endpoints and websockets.
   (Aside from as bootstrapping convenience.  This may be permitted as an extra.)
+    In fact, maybe there should be an official mechanism for it, to permit possible other comms.  Not sure if anything comes CLOSE to TCP, though.  Maybe bluetooth.
 The communication mechanism should be more abstract than that.
 There should be unidirectional tx mechanisms, for advertisement.
 And there should be bidirectional communication mechanisms, for
@@ -86,4 +88,37 @@ Bidirectional 1-1 connection (encryptable)
   tx Advertisement (on initiate connection)
   tx poke (may not be relevant anymore)
   tx request Roster
-  
+
+Should requests be asynchronous?
+  Like, [request data] [receive roster] [receive summary]...[receive data]
+  Frankly...probably.  With the different modalities, I'm not sure we'll always be able to guarantee responses will occur before other things.
+  Should request/response be matched with IDs?
+
+[command parser] <-> [tls channel] <-> [comm channel]
+if unencrypted, just: [command parser] <-> [comm channel]
+
+[comm channel] - basically just the ByteChannel interface, plus connect-on-construction
+  connect on construction - throw exception if fail, I guess
+  <- read (reports disconnect)
+  -> write (reports disconnect)
+  close()
+  isOpen()
+  <<-> interrupt (check approval for TLS error - anything else?  Note, THIS one is synchronous, at least in effect)
+    Option: deny all interrupts
+      ...Option: approve all interrupts?
+
+Wait, there's a difference between incoming and outgoing [comm channel]s.  Or...CAN be.  SHOULD there be?  There needs to be, at first, but after the connection is made, they can be treated about the same, I think.  Well, they need to START different, I guess, so we'll start there.
+
+Have an incoming comm open at all times.
+  When a connection comes in, pass it off to the pile of active connections.
+  You can also initiate a connection, and if it succeeds, pass it off to the pile of active connections.
+  And probably...only one connection needs to exist for a node, and almost certainly only one needs to be used at a time, unless you're having MAJOR RELIABILITY PROBLEMS.
+
+
+How to know when server should display "Incoming TLS connection.  Local fingerprint is: ASDF.  Waiting for client fingerprint."?  500ms connection delay?
+
+
+TODO
+  fingerprint registry?
+    Like, I guess that's the truststore - we could do something about Advertisements, signing them, verifying them, importing hear-say advertisements, verifying them against the registered fingerprint....  Not sure yet, and may put it off.
+  finalize refactors

@@ -26,6 +26,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Properties;
@@ -68,6 +69,9 @@ public class DataOwner {
         }
     };
     public final OkHttpClient ohClient;
+    public final Boolean encrypted;
+    public final KeyStore keystore;
+    public final KeyStore truststore;
 
     public DataOwner() {
         this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
@@ -76,6 +80,16 @@ public class DataOwner {
                 .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .readTimeout((Integer) options.getOrDefault("OkHttp.READ_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .build();
+        if ((Boolean)options.getOrDefault("Security.ENCRYPTION", true)) {
+            encrypted = true;
+            String keystorePath = (String) options.getOrDefault("Security.KEYSTORE_PATH", "lancopy.ks");
+            String truststorePath = (String) options.getOrDefault("Security.TRUSTSTORE_PATH", "lancopy.ts");
+            //keystore;
+        } else {
+            encrypted = false;
+            keystore = null;
+            truststore = null;
+        }
     }
 
     public byte[] serialize(Object o) {

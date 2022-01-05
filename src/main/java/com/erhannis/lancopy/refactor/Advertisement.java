@@ -23,6 +23,7 @@ public class Advertisement {
     public final List<Comm> comms;
     public final boolean encrypted;
     public final String fingerprint;
+    //TODO SECURITY Sign own Advertisement?
 
     public Advertisement(UUID id, long timestamp, List<Comm> comms, boolean encrypted, String fingerprint) {
         this.id = id;
