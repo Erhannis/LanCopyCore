@@ -5,11 +5,16 @@
 package com.erhannis.lancopy.refactor2;
 
 import java.nio.channels.ByteChannel;
+import java.util.function.Function;
 
 /**
  *
  * @author erhannis
  */
 public abstract class CommChannel implements ByteChannel {
+    public final Function<Interrupt, Boolean> interruptCallback;
     
+    public CommChannel(Function<Interrupt, Boolean> interruptCallback) {
+        this.interruptCallback = interruptCallback;
+    }    
 }

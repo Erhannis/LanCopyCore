@@ -106,6 +106,7 @@ if unencrypted, just: [command parser] <-> [comm channel]
   <<-> interrupt (check approval for TLS error - anything else?  Note, THIS one is synchronous, at least in effect)
     Option: deny all interrupts
       ...Option: approve all interrupts?
+    Except...the way the code is structured, the interrupt isn't coming from the channel, but the TrustManager, which doesn't know abt the channel
 
 Wait, there's a difference between incoming and outgoing [comm channel]s.  Or...CAN be.  SHOULD there be?  There needs to be, at first, but after the connection is made, they can be treated about the same, I think.  Well, they need to START different, I guess, so we'll start there.
 

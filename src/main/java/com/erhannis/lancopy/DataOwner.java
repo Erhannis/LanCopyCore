@@ -10,6 +10,7 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
+import com.erhannis.lancopy.refactor2.tls.ContextFactory;
 import com.erhannis.mathnstuff.components.OptionsFrame;
 import com.erhannis.mathnstuff.utils.Observable;
 import com.erhannis.mathnstuff.utils.ObservableMap;
@@ -26,6 +27,7 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.util.ArrayList;
 import java.util.HashSet;
@@ -70,8 +72,7 @@ public class DataOwner {
     };
     public final OkHttpClient ohClient;
     public final Boolean encrypted;
-    public final KeyStore keystore;
-    public final KeyStore truststore;
+    public final ContextFactory.Context tlsContext;
 
     public DataOwner() {
         this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
@@ -84,11 +85,18 @@ public class DataOwner {
             encrypted = true;
             String keystorePath = (String) options.getOrDefault("Security.KEYSTORE_PATH", "lancopy.ks");
             String truststorePath = (String) options.getOrDefault("Security.TRUSTSTORE_PATH", "lancopy.ts");
-            //keystore;
+            
+            ContextFactory.Context ctx = null;
+            try {
+                ctx = ContextFactory.authenticatedContext("TLSv1.3", keystorePath, truststorePath);
+            } catch (GeneralSecurityException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IOException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            this.tlsContext = ctx;
         } else {
             encrypted = false;
-            keystore = null;
-            truststore = null;
         }
     }
 
