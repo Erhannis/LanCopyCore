@@ -10,6 +10,7 @@ import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.TextData;
 import com.erhannis.lancopy.refactor.tcp.TcpGetComm;
 import com.erhannis.lancopy.refactor.tcp.TcpPutComm;
+import com.erhannis.lancopy.refactor2.CommsManager;
 import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
 import java.io.InputStream;
@@ -104,7 +105,8 @@ public class LanCopyNet {
             new BroadcastAdvertiser(null, broadcastPort, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
             new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
             new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
-            new AdGenerator(dataOwner, rxAdOut, commsIn)
+            new AdGenerator(dataOwner, rxAdOut, commsIn),
+            new CommsManager(dataOwner, txBroadcastAdIn, rxBroadcastAdOut)
         })).start();
         return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, pokeOut, getRosterOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }

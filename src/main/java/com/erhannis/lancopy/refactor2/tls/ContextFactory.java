@@ -148,8 +148,8 @@ public class ContextFactory {
                     if (askAccept) {
                         int response = 'n';
                         try {
-                            //response = System.in.read();
-                            ERROR;
+                            response = System.in.read();
+                            System.err.println("//TODO Integrate into the UI");
                         } catch (IOException ex) {
                             Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
                         }

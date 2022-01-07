@@ -1,0 +1,62 @@
+flowchart TD
+    classDef Out fill:#9f9;
+    classDef In fill:#99f;
+    classDef CallServer fill:#f99,stroke-width:3px;
+    classDef CallClient fill:#f99,stroke-width:3px,stroke-dasharray:5 5;
+    UI
+    subgraph Tracker
+      Tracker.OTxAd[TxAd]
+      class Tracker.OTxAd Out
+      Tracker.IRxAd[RxAd]
+      class Tracker.IRxAd In
+      Tracker.SSum[Sum]
+      class Tracker.SSum CallServer
+      Tracker.SAd[Ad]
+      class Tracker.SAd CallServer
+      Tracker.SRoster[Roster]
+      class Tracker.SRoster CallServer
+      Tracker.ISum[Sum]
+      class Tracker.ISum In
+      Tracker.OSum[Sum]
+      class Tracker.OSum Out
+    end
+    subgraph LData[Local Data]
+      LData.IData[Data]
+      class LData.IData In
+      LData.SData[Data]
+      class LData.SData CallServer
+      LData.OSum[Sum]
+      class LData.OSum Out
+    end
+    subgraph AdGen[Ad Generator]
+      AdGen.IComm[Comm]
+      class AdGen.IComm In
+      AdGen.OLAd[LAd]
+      class AdGen.OLAd Out
+    end
+    CommsMan[CommsManager]
+    BroadTx[Broadcast Ad TX]
+    BroadRx[Broadcast Ad RX]
+    Tracker.OTxAd --> UI
+    Tracker.OTxAd --> CommsMan
+    Tracker.OSum --> UI
+    Tracker.OSum --> CommsMan
+    Tracker.SRoster --> UI
+    Tracker.SRoster --> CommsMan
+    Tracker.SAd --> UI
+    Tracker.SAd --> CommsMan
+    Tracker.SSum --> CommsMan
+    LData.SData --> CommsMan
+    LData.OSum --> Tracker.ISum
+    UI --> LData.IData
+    UI -->|RSubscribe| CommsMan
+    CommsMan -->|CData| UI
+    AdGen.OLAd --> Tracker.IRxAd
+    CommsMan --> AdGen.IComm
+    CommsMan --> Tracker.IRxAd
+    BroadRx --> CommsMan
+    CommsMan --> BroadTx
+    CommsMan --> Tracker.IRxAd
+    CommsMan -->|RData| UI
+    CommsMan -->|Roster| Tracker.IRxAd
+    CommsMan --> Tracker.ISum

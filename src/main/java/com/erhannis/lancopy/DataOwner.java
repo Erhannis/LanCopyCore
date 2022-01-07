@@ -71,7 +71,7 @@ public class DataOwner {
         }
     };
     public final OkHttpClient ohClient;
-    public final Boolean encrypted;
+    public final boolean encrypted;
     public final ContextFactory.Context tlsContext;
 
     public DataOwner() {
@@ -82,7 +82,7 @@ public class DataOwner {
                 .readTimeout((Integer) options.getOrDefault("OkHttp.READ_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .build();
         if ((Boolean)options.getOrDefault("Security.ENCRYPTION", true)) {
-            encrypted = true;
+            this.encrypted = true;
             String keystorePath = (String) options.getOrDefault("Security.KEYSTORE_PATH", "lancopy.ks");
             String truststorePath = (String) options.getOrDefault("Security.TRUSTSTORE_PATH", "lancopy.ts");
             
@@ -96,7 +96,8 @@ public class DataOwner {
             }
             this.tlsContext = ctx;
         } else {
-            encrypted = false;
+            this.encrypted = false;
+            this.tlsContext = null;
         }
     }
 

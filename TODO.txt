@@ -75,12 +75,16 @@ Support heartbeats?
 CommsManager -> [Phy]Manager -> Comm ? or
 CommsManager -> Comm ?  ...Probably former
 
-Unidirectional broadcast (unencrypted, probably)
+Unidirectional broadcast (unencrypted, probably) (optional, turn off?)
   tx Advertisement
+    plaintext
+  rx Advertisement
     plaintext
 Bidirectional 1-1 connection (encryptable)
   tx Summary
+    on connect
   tx Roster
+    on connect
   tx request poke (may not matter with persistent connections) (but, may instead have special handshake)
   ?tx request pong?
   tx request data
@@ -123,3 +127,4 @@ TODO
   fingerprint registry?
     Like, I guess that's the truststore - we could do something about Advertisements, signing them, verifying them, importing hear-say advertisements, verifying them against the registered fingerprint....  Not sure yet, and may put it off.
   finalize refactors
+  fix truststore interrupts properly
