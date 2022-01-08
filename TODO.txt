@@ -81,17 +81,26 @@ Unidirectional broadcast (unencrypted, probably) (optional, turn off?)
   rx Advertisement
     plaintext
 Bidirectional 1-1 connection (encryptable)
-  tx Summary
+  tx LSummary
     on connect
+    on change
   tx Roster
     on connect
-  tx request poke (may not matter with persistent connections) (but, may instead have special handshake)
+  ?tx request poke? (may not matter with persistent connections) (but, may instead have special handshake)
   ?tx request pong?
   tx request data
   (remember to handle both result or failure)
-  tx Advertisement (on initiate connection)
-  tx poke (may not be relevant anymore)
-  tx request Roster
+  (tx data)
+  tx AAdvertisement
+    on connect
+    on update
+  ?tx poke? (may not be relevant anymore)
+  ?tx request Roster?
+  Future:
+    ? do actual mesh, transmit data through multiple nodes
+Manual/special
+  pull data
+  manual connect (tcp comm)
 
 Should requests be asynchronous?
   Like, [request data] [receive roster] [receive summary]...[receive data]
