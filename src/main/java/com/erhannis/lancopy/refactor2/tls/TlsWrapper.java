@@ -28,7 +28,7 @@ public class TlsWrapper extends CommChannel {
     public final TlsChannel tlsChannel;
     
     public TlsWrapper(DataOwner dataOwner, boolean clientMode, Function<Interrupt, Boolean> interruptCallback, CommChannel subchannel) throws IOException {
-        super(interruptCallback); //TODO Where is this comm used?  Should null, or wrapped, or passthrough?
+        super(interruptCallback, subchannel.comm); //TODO Where is this comm used?  Should null, or wrapped, or passthrough?  Passthrough, for now....
         
         this.wrappedChannel = subchannel;
         

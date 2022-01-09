@@ -89,7 +89,9 @@ public class NodeManager implements CSProcess {
     
 
     private final AltingChannelInput<byte[]> txMsgIn;
-    private final ChannelOutput<byte[]> rxMsgOut;
+    private final ChannelOutput<Pair<Object,byte[]>> rxMsgOut;
+    private final AltingChannelInput<Object> shuffleChannelIn;
+    private final ChannelOutput<ChannelReader> channelReaderShuffleOut;
     private final AltingChannelInput<CommChannel> incomingConnectionIn;
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutput<Pair<Comm,Boolean>> commStatusOut;
@@ -106,23 +108,26 @@ public class NodeManager implements CSProcess {
      * @param subscribeIn
      * @param commStatusOut 
      */
-    public NodeManager(DataOwner dataOwner, UUID nodeId, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> rxMsgOut, AltingChannelInput<CommChannel> incomingConnectionIn, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Pair<Comm,Boolean>> commStatusOut) {
+    public NodeManager(DataOwner dataOwner, UUID nodeId, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<Pair<Object, byte[]>> rxMsgOut, AltingChannelInput<Object> shuffleChannelIn, ChannelOutput<ChannelReader> channelReaderShuffleOut, AltingChannelInput<CommChannel> incomingConnectionIn, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Pair<Comm,Boolean>> commStatusOut) {
         this.dataOwner = dataOwner;
         this.nodeId = nodeId;
         this.txMsgIn = txMsgIn;
         this.rxMsgOut = rxMsgOut;
+        this.shuffleChannelIn = shuffleChannelIn;
+        this.channelReaderShuffleOut = channelReaderShuffleOut;
         this.incomingConnectionIn = incomingConnectionIn;
         this.subscribeIn = subscribeIn;
         this.commStatusOut = commStatusOut;
     }
 
-    private static final int N = 3; // Number of fixed Guards
+    private static final int N = 4; // Number of fixed Guards
     
     private Alternative regenAlt() {
         Guard[] guards = new Guard[N + connections.size()];
         guards[0] = incomingConnectionIn;
         guards[1] = subscribeIn;
         guards[2] = txMsgIn;
+        guards[3] = shuffleChannelIn;
         for (int i = 0; i < connections.size(); i++) {
             guards[i+N] = connections.get(i).rxMsgIn;
         }
@@ -204,12 +209,6 @@ public class NodeManager implements CSProcess {
                                     Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
                                 }
                                 commStatusOut.write(Pair.gen(comm, false));
-                                alt = regenAlt();
-                                if (cr.cc.comm != null) {
-                                    commStatusOut.write(Pair.gen(cr.cc.comm, false));
-                                } else {
-                                    dataOwner.errOnce("//TODO Figure out how to show incame connections status");
-                                }
                             }
                         } catch (Exception ex) {
                             Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
@@ -259,12 +258,26 @@ public class NodeManager implements CSProcess {
                     }
                     break;
                 }
+                case 3: { // shuffleChannelIn
+                    Object token = shuffleChannelIn.read();
+                    for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
+                        ChannelReader cr = cri.next();
+                        if (cr.token == token) {
+                            System.out.println("NodeManager giving up channel reader: " + cr.cc.comm);
+                            channelReaderShuffleOut.write(cr);
+                            cri.remove();
+                            alt = regenAlt();
+                            break;
+                        }
+                    }
+                    break;
+                }
                 default: { // rxMsgIn
                     ChannelReader cr = connections.get(idx-N);
                     byte[] msg = cr.rxMsgIn.read();
                     if (msg != null) {
                         // Pass msg on to CM
-                        rxMsgOut.write(msg);
+                        rxMsgOut.write(Pair.gen(cr.token, msg));
                     } else {
                         // Reader had a problem; close channel
                         try {

@@ -72,8 +72,8 @@ public class CommsManager implements CSProcess {
         AltingChannelInput<CommChannel> serverChannelIn = serverChannelChannel.in();
         ChannelOutput<CommChannel> serverChannelOut = serverChannelChannel.out();
         
-        //DO Upon initiating connection, send ID message
         //TODO Add verification to make sure nodes' claims match their TLS credentials
+        //DO Read Identification message first off, transfer channel
         
         Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subIn, internalMsgRxIn, internalCommChannelIn});
         while (true) {
