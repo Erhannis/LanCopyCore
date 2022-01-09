@@ -7,6 +7,8 @@ package com.erhannis.lancopy.refactor.tcp;
 
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
+import com.erhannis.lancopy.refactor2.CommChannel;
+import com.erhannis.lancopy.refactor2.tcp.TcpCommChannel;
 import java.util.Objects;
 
 /**
@@ -53,5 +55,10 @@ public class TcpComm extends Comm {
     @Override
     public Comm copyToOwner(Advertisement owner) {
         return new TcpComm(owner, this.host, this.port);
+    }
+
+    @Override
+    public CommChannel connect() throws Exception {
+        return new TcpCommChannel(this);
     }
 }

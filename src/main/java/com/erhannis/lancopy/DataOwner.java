@@ -82,7 +82,11 @@ public class DataOwner {
     public final ContextFactory.Context tlsContext;
 
     public DataOwner() {
-        this.options = Options.demandOptions(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
+        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
+    }
+
+    public DataOwner(String optionsPath) {
+        this.options = Options.demandOptions(optionsPath);
         this.ohClient = new OkHttpClient.Builder()
                 .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)

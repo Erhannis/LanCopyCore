@@ -36,6 +36,8 @@ public class TlsWrapper extends CommChannel {
         System.out.println("TlsWrapper (" + (clientMode ? "client" : "server" + ")"));
         System.out.println("Local hash:");
         System.out.println(dataOwner.tlsContext.sha256Fingerprint);
+
+        //TODO Store cert ID
         
         if (clientMode) {
             System.out.println("Connection outbound...");

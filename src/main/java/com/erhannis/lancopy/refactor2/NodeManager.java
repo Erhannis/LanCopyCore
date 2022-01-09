@@ -136,6 +136,7 @@ public class NodeManager implements CSProcess {
     
     @Override
     public void run() {
+        System.out.println("NodeManager starting up: " + nodeId);
         Alternative alt = regenAlt();
         while (true) {
             //TODO Should we be able to rx messages while blocked trying to send a message?  ...Not until it becomes important, I think.
