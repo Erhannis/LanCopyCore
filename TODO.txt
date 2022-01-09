@@ -137,3 +137,44 @@ TODO
     Like, I guess that's the truststore - we could do something about Advertisements, signing them, verifying them, importing hear-say advertisements, verifying them against the registered fingerprint....  Not sure yet, and may put it off.
   finalize refactors
   fix truststore interrupts properly
+
+
+Ok, part of the problem is that some of these messages need to be streamed.
+  Can I support streaming, while also not junking up everything else?
+  Really the only thing that needs to be streamed ATM is Data.
+  Even then - I thiiink the HTTP sizeless streaming thing operates in chunks.
+    Maybe I could have some kind of support for chunking or something?
+  This also plays into like, ephemeral modes - getting a request, then...hang on, we decided to permit interleaving
+  So...can we be sending chunks, then send an Ad update, then continue with chunks?
+    I mean, that's sortof a neat idea.
+
+I decree that communications may take place over any channel.
+  More particularly, comm is not tracked, in exchanges - a request can come in on one channel, and a response go out on a different.
+    Even Packets of a single Data transfer can be sent across multiple comms.
+      This could be used for exceptional resiliency - but will/would require ACKs and resending.
+
+Decree: NodeManager manages TLS wrapping
+
+Ok, comm format:
+  int length of serialized message
+  serialized message
+
+Message types
+  Advertisement
+  ID - identifies the immediate sender, specifically
+
+Augh, wait, how to decide which NodeManager gets an incoming connection?
+  We could have a separate NM that just handles incame connections.
+  BUT, their messages still need to get tagged.
+  We could have the first message be an identi...wait, DO we need to tag messages?  
+  Hmm.  Maybe only for requests.
+  It'd be nice to be able to use incame connections to send data back, though, rather than opening a new connection.
+  Nodes could send an ID message, first, and they'd get shuffled to the appropriate NM?
+  We'd need to cryptographically verify them, though - don't want a hacked node eavesdropping.
+  ...Unless that falls within our security model - every node that CAN make a connection is trusted not to be bad.
+  Maybe we'll start with that?  It's a liiiittle concerning.
+  Bleh, but the NM doesn't read the messages!
+  Maybe we shelve the reuse of incoming connections, for now, and just have request messages be tagged with the target id?
+    Note, btw, unless verified, this would allow A to tell B to send data to C, which might be undesirable, for some reason.
+  Maybe the NM tags passed-on `byte[] msg` with a CommChannelTag?
+    Then, if the CM gets an ID msg that doesn't match the ... hang on

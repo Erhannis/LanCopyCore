@@ -20,7 +20,7 @@ public class TcpComm extends Comm {
     public final int port;
 
     public TcpComm(Advertisement owner, String host, int port) {
-        super(owner, TYPE);
+        super(owner, TYPE, 1); //TODO Permit custom score?
         this.host = host;
         this.port = port;
     }

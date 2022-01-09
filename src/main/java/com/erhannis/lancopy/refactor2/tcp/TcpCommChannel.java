@@ -17,6 +17,8 @@ import java.nio.channels.ServerSocketChannel;
 import java.nio.channels.SocketChannel;
 import java.util.function.Consumer;
 import java.util.function.Function;
+import jcsp.helpers.JcspUtils;
+import jcsp.lang.ChannelOutput;
 
 /**
  *
@@ -24,7 +26,6 @@ import java.util.function.Function;
  */
 public class TcpCommChannel extends CommChannel {
     private final SocketChannel rawChannel;
-    private final TcpComm comm;
 
     //TODO Move some of this into CommChannel, or e.g. BasicCommChannel?
     
@@ -37,9 +38,8 @@ public class TcpCommChannel extends CommChannel {
      * @throws IOException 
      */
     public TcpCommChannel(Function<Interrupt, Boolean> interruptCallback, TcpComm comm) throws IOException {
-        super(interruptCallback);
+        super(interruptCallback, comm);
         System.out.println("TcpCommChannel connecting " + comm);
-        this.comm = comm;
         try (SocketChannel rawChannel = SocketChannel.open()) {
             rawChannel.connect(new InetSocketAddress(comm.host, comm.port));
             System.out.println("TcpCommChannel connected " + comm);
@@ -55,9 +55,8 @@ public class TcpCommChannel extends CommChannel {
      * @throws IOException 
      */
     public TcpCommChannel(Function<Interrupt, Boolean> interruptCallback, SocketChannel channel) {
-        super(interruptCallback);
+        super(interruptCallback, null);
         this.rawChannel = channel;
-        this.comm = null;
     }
     
     /**
@@ -67,13 +66,13 @@ public class TcpCommChannel extends CommChannel {
      * @param incomingConnectionCallback 
      */
     //TODO Do we need to separately handle interfaces, or ipv6, or anything?  Bind to separate addresses or anything?
-    public static void serverThread(Consumer<SocketChannel> incomingConnectionCallback, int port) throws IOException {
+    public static void serverThread(ChannelOutput<SocketChannel> incomingConnectionOut, int port) throws IOException {
         System.out.println("TcpCommChannel.serverThread, waiting for incoming connections on " + port);
         ServerSocketChannel ss = ServerSocketChannel.open();
         ss.socket().bind(new InetSocketAddress(port));
         while (true) {
             SocketChannel sc = ss.accept();
-            incomingConnectionCallback.accept(sc);
+            incomingConnectionOut.write(sc);
         }
     }
     
@@ -99,6 +98,6 @@ public class TcpCommChannel extends CommChannel {
 
     @Override
     public String toString() {
-        return "TcpChan{" + isOpen() + ", " + comm + "}";
+        return "TcpChan{" + isOpen() + "," + super.toString() + "}";
     }
 }

@@ -10,6 +10,8 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
+import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
+import com.erhannis.lancopy.refactor2.messages.Message;
 import com.erhannis.lancopy.refactor2.tls.ContextFactory;
 import com.erhannis.mathnstuff.components.OptionsFrame;
 import com.erhannis.mathnstuff.utils.Observable;
@@ -27,6 +29,8 @@ import java.io.FileInputStream;
 import java.io.FileNotFoundException;
 import java.io.FileOutputStream;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
 import java.util.ArrayList;
@@ -38,6 +42,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
 import okhttp3.OkHttpClient;
+import sun.security.x509.X500Name;
 
 /**
  *
@@ -49,7 +54,7 @@ public class DataOwner {
      */
     public static final UUID LANCOPY_SERVICE = UUID.fromString("66e8b86b-5868-4b8e-8f6f-d2845616d72c");
     
-    public final UUID ID = UUID.randomUUID();
+    public final UUID ID;//UUID.randomUUID();
 
     public final Options options;
 
@@ -62,6 +67,8 @@ public class DataOwner {
             kryo.register(Comm.class);
             kryo.register(TcpComm.class); //TODO Move these elsewhere?
             kryo.register(Summary.class);
+            kryo.register(Message.class);
+            kryo.register(IdentificationMessage.class);
             kryo.register(ArrayList.class);
             kryo.register(UUID.class, new UUIDSerializer());
             UnmodifiableCollectionsSerializer.registerSerializers(kryo);
@@ -95,7 +102,9 @@ public class DataOwner {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             }
             this.tlsContext = ctx;
+            this.ID = UUID.fromString(ctx.id);
         } else {
+            this.ID = UUID.randomUUID(); //TODO Optionize or something?
             this.encrypted = false;
             this.tlsContext = null;
         }
@@ -108,7 +117,7 @@ public class DataOwner {
         output.close();
         return baos.toByteArray();
     }
-
+    
     public Object deserialize(byte[] b) {
         ByteArrayInputStream bais = new ByteArrayInputStream(b);
         Input input = new Input(bais);

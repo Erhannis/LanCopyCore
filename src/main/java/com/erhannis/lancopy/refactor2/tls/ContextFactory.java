@@ -50,6 +50,7 @@ public class ContextFactory {
     public static class Context {
         public SSLContext sslContext;
         public String sha256Fingerprint;
+        public String id;
     }
     
 
@@ -112,6 +113,17 @@ public class ContextFactory {
             ts.load(truststoreFile, "password".toCharArray());
             TrustManagerFactory tmf = TrustManagerFactory.getInstance(TrustManagerFactory.getDefaultAlgorithm());
             tmf.init(ts);
+            
+            Certificate cert = ks.getCertificate("node");
+            if (cert instanceof X509Certificate) {
+                X500Name x500Name = new X500Name(((X509Certificate)cert).getSubjectX500Principal().getName());
+                String cn = x500Name.getCommonName();
+                ctx.id = cn;
+            } else {
+                System.err.println("Failed to find cert for 'node', failed to recover ID");
+                ctx.id = null;
+            }
+
 
             ctx.sha256Fingerprint = DigestUtils.sha256Hex(ks.getCertificate("node").getEncoded());
             
