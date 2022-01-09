@@ -51,14 +51,14 @@ public class NodeManager implements CSProcess {
         public void run() {
             while (true) {
                 try {
-                    ByteBuffer bbLen = ByteBuffer.allocateDirect(4);
+                    ByteBuffer bbLen = ByteBuffer.allocate(4);
                     while (bbLen.remaining() > 0) {
                         if (cc.read(bbLen) < 0) {
                             rxMsgOut.write(null);
                         }
                     }
                     int len = Ints.fromByteArray(bbLen.array());
-                    ByteBuffer bbMsg = ByteBuffer.allocateDirect(len);
+                    ByteBuffer bbMsg = ByteBuffer.allocate(len);
                     while (bbMsg.remaining() > 0) {
                         if (cc.read(bbMsg) < 0) {
                             rxMsgOut.write(null);
@@ -151,10 +151,11 @@ public class NodeManager implements CSProcess {
                             //TODO Are interrupts still a thing?
                             //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
                             //TODO Verify cert matches id
-                            cc = new TlsWrapper(dataOwner, true, null, cc);
+                            cc = new TlsWrapper(dataOwner, false, cc);
                         }
                         ChannelReader cr = new ChannelReader(cc);
                         new ProcessManager(cr).start();
+                        //DO Send identification?
                         connections.add(cr);
                         dataOwner.errOnce("//TODO Figure out how to show incame connections status");
                         //commStatusOut.write(Pair.gen(comm, true));
@@ -175,7 +176,8 @@ public class NodeManager implements CSProcess {
                         }
                         return Double.compare(sa, sb);
                     });
-                    alt = regenAlt();                    
+                    alt = regenAlt();   
+                    break;
                 }
                 case 1: { // subscribeIn
                     List<Comm> comms = subscribeIn.read();
@@ -186,7 +188,7 @@ public class NodeManager implements CSProcess {
                             if (dataOwner.encrypted) {
                                 //TODO Are interrupts still a thing?
                                 //TODO Verify cert matches id
-                                cc = new TlsWrapper(dataOwner, true, null, cc);
+                                cc = new TlsWrapper(dataOwner, true, cc);
                             }
                             ChannelReader cr = new ChannelReader(cc);
                             new ProcessManager(cr).start();

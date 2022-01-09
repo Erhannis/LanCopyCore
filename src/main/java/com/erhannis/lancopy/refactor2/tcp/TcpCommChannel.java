@@ -32,19 +32,17 @@ public class TcpCommChannel extends CommChannel {
     /**
      * Create a client TcpCommChannel connection.  If the constructor returns, a TCP connection has been established.<br/>
      * <br/>
-     * Implementers: this constructor should likely be present on all 
-     * @param interruptCallback
+     * Implementers: this constructor should likely be present on all ... something.
      * @param comm
      * @throws IOException 
      */
-    public TcpCommChannel(Function<Interrupt, Boolean> interruptCallback, TcpComm comm) throws IOException {
-        super(interruptCallback, comm);
+    public TcpCommChannel(TcpComm comm) throws IOException {
+        super(comm);
         System.out.println("TcpCommChannel connecting " + comm);
-        try (SocketChannel rawChannel = SocketChannel.open()) {
-            rawChannel.connect(new InetSocketAddress(comm.host, comm.port));
-            System.out.println("TcpCommChannel connected " + comm);
-            this.rawChannel = rawChannel;
-        }
+        SocketChannel rawChannel = SocketChannel.open();
+        rawChannel.connect(new InetSocketAddress(comm.host, comm.port));
+        System.out.println("TcpCommChannel connected " + comm);
+        this.rawChannel = rawChannel;
     }
 
     /**
@@ -54,8 +52,8 @@ public class TcpCommChannel extends CommChannel {
      * @param channel
      * @throws IOException 
      */
-    public TcpCommChannel(Function<Interrupt, Boolean> interruptCallback, SocketChannel channel) {
-        super(interruptCallback, null);
+    public TcpCommChannel(SocketChannel channel) {
+        super(null);
         this.rawChannel = channel;
     }
     
@@ -66,13 +64,13 @@ public class TcpCommChannel extends CommChannel {
      * @param incomingConnectionCallback 
      */
     //TODO Do we need to separately handle interfaces, or ipv6, or anything?  Bind to separate addresses or anything?
-    public static void serverThread(ChannelOutput<SocketChannel> incomingConnectionOut, int port) throws IOException {
+    public static void serverThread(ChannelOutput<CommChannel> incomingConnectionOut, int port) throws IOException {
         System.out.println("TcpCommChannel.serverThread, waiting for incoming connections on " + port);
         ServerSocketChannel ss = ServerSocketChannel.open();
         ss.socket().bind(new InetSocketAddress(port));
         while (true) {
             SocketChannel sc = ss.accept();
-            incomingConnectionOut.write(sc);
+            incomingConnectionOut.write(new TcpCommChannel(sc));
         }
     }
     

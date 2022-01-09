@@ -9,8 +9,13 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
 import com.erhannis.lancopy.refactor2.NodeManager.ChannelReader;
+import com.erhannis.lancopy.refactor2.tcp.TcpCommChannel;
+import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
+import com.erhannis.mathnstuff.utils.Options;
 import com.google.common.collect.Lists;
+import java.io.IOException;
+import java.nio.channels.SocketChannel;
 import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
@@ -29,7 +34,27 @@ import jcsp.lang.ProcessManager;
  */
 public class MainTest {
     public static void main(String[] args) {
-        DataOwner dataOwner = new DataOwner("options1.dat");
+        boolean toggle = false;
+        int i = 0;
+        int j = 1;
+        if (args.length >= 2) {
+            i = Integer.parseInt(args[0]);
+            j = Integer.parseInt(args[1]);
+        }
+        if (toggle) {
+            int k = i;
+            i = j;
+            j = k;
+        }
+        DataOwner dataOwner = new DataOwner("options"+i+".dat");
+        dataOwner.options.set("Security.KEYSTORE_PATH", "lancopy"+i+".ks");
+        dataOwner.options.set("Security.TRUSTSTORE_PATH", "lancopy"+i+".ts");
+        dataOwner.options.set("Security.ENCRYPTION", true);
+        try {
+            Options.saveOptions(dataOwner.options, "options"+i+".dat");
+        } catch (IOException ex) {
+            Logger.getLogger(MainTest.class.getName()).log(Level.SEVERE, null, ex);
+        }
         
         Any2OneChannel<byte[]> txMsgChannel = Channel.<byte[]> any2one();
         AltingChannelInput<byte[]> txMsgIn = txMsgChannel.in();
@@ -59,11 +84,14 @@ public class MainTest {
         AltingChannelInput<Pair<Comm,Boolean>> commStatusIn = commStatusChannel.in();
         ChannelOutput<Pair<Comm,Boolean>> commStatusOut = commStatusChannel.out();
         
-        int localPort = 10001;
-        UUID remote = UUID.randomUUID();
-        int remotePort = 10002;
+        int localPort = 10000+i;
+        UUID remoteId = UUID.randomUUID();
+        int remotePort = 10000+j;
         
-        NodeManager nm = new NodeManager(dataOwner, remote, txMsgIn, rxMsgOut, shuffleChannelIn, channelReaderShuffleOut, incomingConnectionIn, subscribeIn, commStatusOut);
+        List<Comm> lComms = Lists.newArrayList(new TcpComm(null, "localhost", localPort));
+        Advertisement lad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), lComms, true, null);
+
+        NodeManager nm = new NodeManager(dataOwner, remoteId, txMsgIn, rxMsgOut, shuffleChannelIn, channelReaderShuffleOut, incomingConnectionIn, subscribeIn, commStatusOut);
         
         new ProcessManager(new Parallel(new CSProcess[]{
             nm,
@@ -75,11 +103,26 @@ public class MainTest {
                 while (true) {
                     System.out.println("rx status: " + commStatusIn.read());
                 }
+            }, () -> {
+                try {
+                    TcpCommChannel.serverThread(incomingConnectionOut, localPort);
+                } catch (IOException ex) {
+                    Logger.getLogger(MainTest.class.getName()).log(Level.SEVERE, null, ex);
+                }
+            }, () -> {
+                while (true) {
+                    try {
+                        Thread.sleep(10000);
+                    } catch (InterruptedException ex) {
+                        Logger.getLogger(MainTest.class.getName()).log(Level.SEVERE, null, ex);
+                    }
+                    txMsgOut.write(dataOwner.serialize(lad));
+                }
             }
         })).start();
         
         List<Comm> comms = Lists.newArrayList(new TcpComm(null, "localhost", remotePort));
-        Advertisement rad = new Advertisement(remote, System.currentTimeMillis(), comms, true, null);
+        Advertisement rad = new Advertisement(remoteId, System.currentTimeMillis(), comms, true, null);
         subscribeOut.write(rad.comms);
         
         while (true) {

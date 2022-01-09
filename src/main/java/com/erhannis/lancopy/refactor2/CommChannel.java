@@ -13,11 +13,9 @@ import java.util.function.Function;
  * @author erhannis
  */
 public abstract class CommChannel implements ByteChannel {
-    public final Function<Interrupt, Boolean> interruptCallback;
     public final Comm comm;
     
-    public CommChannel(Function<Interrupt, Boolean> interruptCallback, Comm comm) {
-        this.interruptCallback = interruptCallback;
+    public CommChannel(Comm comm) {
         this.comm = comm;
     }
     

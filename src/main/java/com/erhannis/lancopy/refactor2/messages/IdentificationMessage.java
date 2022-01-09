@@ -17,4 +17,8 @@ public class IdentificationMessage implements Message {
     public IdentificationMessage(UUID nodeId) {
         this.nodeId = nodeId;
     }
+    
+    private IdentificationMessage() {
+        this.nodeId = null;
+    }
 }

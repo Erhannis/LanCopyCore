@@ -27,8 +27,8 @@ public class TlsWrapper extends CommChannel {
     public final CommChannel wrappedChannel;
     public final TlsChannel tlsChannel;
     
-    public TlsWrapper(DataOwner dataOwner, boolean clientMode, Function<Interrupt, Boolean> interruptCallback, CommChannel subchannel) throws IOException {
-        super(interruptCallback, subchannel.comm); //TODO Where is this comm used?  Should null, or wrapped, or passthrough?  Passthrough, for now....
+    public TlsWrapper(DataOwner dataOwner, boolean clientMode, CommChannel subchannel) throws IOException {
+        super(subchannel.comm); //TODO Where is this comm used?  Should null, or wrapped, or passthrough?  Passthrough, for now....
         
         this.wrappedChannel = subchannel;
         
@@ -49,9 +49,8 @@ public class TlsWrapper extends CommChannel {
             engine.setEnabledProtocols(new String[]{"TLSv1.3"});
             ClientTlsChannel.Builder builder = ClientTlsChannel.newBuilder(subchannel, engine);
 
-            try (TlsChannel tlsChannel = builder.build()) {
-                this.tlsChannel = tlsChannel;
-            }
+            TlsChannel tlsChannel = builder.build();
+            this.tlsChannel = tlsChannel;
         } else {
             System.out.println("Connection inbound...");
 
@@ -67,9 +66,8 @@ public class TlsWrapper extends CommChannel {
                         return se;
                     });
 
-            try (TlsChannel tlsChannel = builder.build()) {
-                this.tlsChannel = tlsChannel;
-            }
+            TlsChannel tlsChannel = builder.build();
+            this.tlsChannel = tlsChannel;
         }
     }
 
