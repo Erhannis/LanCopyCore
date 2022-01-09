@@ -33,6 +33,26 @@ import jcsp.lang.ProcessManager;
  * @author erhannis
  */
 public class NodeManager implements CSProcess {
+    public static class NMInterface {
+        public final ChannelOutput<byte[]> txMsgOut;
+        public final AltingChannelInput<Pair<Object,byte[]>> rxMsgIn;
+        public final ChannelOutput<Object> shuffleChannelOut;
+        public final AltingChannelInput<ChannelReader> channelReaderShuffleIn;
+        public final ChannelOutput<CommChannel> incomingConnectionOut;
+        public final ChannelOutput<List<Comm>> subscribeOut;
+        public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
+
+        public NMInterface(ChannelOutput<byte[]> txMsgOut, AltingChannelInput<Pair<Object, byte[]>> rxMsgIn, ChannelOutput<Object> shuffleChannelOut, AltingChannelInput<ChannelReader> channelReaderShuffleIn, ChannelOutput<CommChannel> incomingConnectionOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn) {
+            this.txMsgOut = txMsgOut;
+            this.rxMsgIn = rxMsgIn;
+            this.shuffleChannelOut = shuffleChannelOut;
+            this.channelReaderShuffleIn = channelReaderShuffleIn;
+            this.incomingConnectionOut = incomingConnectionOut;
+            this.subscribeOut = subscribeOut;
+            this.commStatusIn = commStatusIn;
+        }
+    }
+    
     public static class ChannelReader implements CSProcess {
         // Token used to identify this CR without passing around the CR itself
         public final Object token = new Object();
@@ -104,7 +124,9 @@ public class NodeManager implements CSProcess {
      * @param nodeId
      * @param txMsgIn
      * @param rxMsgOut
-     * @param incomingConnectionIns
+     * @param shuffleChannelIn
+     * @param channelReaderShuffleOut
+     * @param incomingConnectionIn
      * @param subscribeIn
      * @param commStatusOut 
      */
