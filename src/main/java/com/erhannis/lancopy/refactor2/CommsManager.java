@@ -8,6 +8,7 @@ import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
+import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.tcp.TcpCommChannel;
 import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.Pair;
@@ -22,6 +23,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.JcspUtils;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
@@ -45,12 +47,66 @@ public class CommsManager implements CSProcess {
     
     public CommsManager(DataOwner dataOwner) {
         this.dataOwner = dataOwner;
+
+        Any2OneChannel<Pair<NodeManager.CRToken,byte[]>> internalRxMsgChannel = Channel.<Pair<NodeManager.CRToken,byte[]>> any2one();
+        this.internalRxMsgIn = internalRxMsgChannel.in();
+        this.internalRxMsgOut = JcspUtils.logDeadlock(internalRxMsgChannel.out());
+        
+        Any2OneChannel<NodeManager.ChannelReader> internalChannelReaderShuffleAChannel = Channel.<NodeManager.ChannelReader> any2one();
+        this.internalChannelReaderShuffleAIn = internalChannelReaderShuffleAChannel.in();
+        this.internalChannelReaderShuffleAOut = JcspUtils.logDeadlock(internalChannelReaderShuffleAChannel.out());
+        
+        Any2OneChannel<Pair<Comm,Boolean>> internalCommStatusChannel = Channel.<Pair<Comm,Boolean>> any2one();
+        this.internalCommStatusIn = internalCommStatusChannel.in();
+        this.internalCommStatusOut = JcspUtils.logDeadlock(internalCommStatusChannel.out());
     }
 
+    private final ChannelOutput<Comm> lcommOut;
+    private final ChannelOutput<Advertisement> radOut;
     private final AltingChannelInput<Advertisement> aadIn;
+    private final ChannelOutput<Summary> rsumOut;
+    private final AltingChannelInput<Summary> lsumIn;
+    private final ChannelOutput<Pair<Comm,Boolean>> statusOut;
     private final AltingChannelInput<List<Comm>> subscribeIn;
+    private final AltingChannelInput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgIn;
+    private final ChannelOutput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgOut;
+    private final AltingChannelInput<NodeManager.ChannelReader> internalChannelReaderShuffleAIn;
+    private final ChannelOutput<NodeManager.ChannelReader> internalChannelReaderShuffleAOut;
+    private final AltingChannelInput<Pair<Comm,Boolean>> internalCommStatusIn;
+    private final ChannelOutput<Pair<Comm,Boolean>> internalCommStatusOut;
 
     private HashMap<UUID, NodeManager.NMInterface> nodes = new HashMap<>();
+    
+    private NodeManager.NMInterface startNodeManager(UUID id) {
+        // Blehhhhh, this is boilerplatey
+        Any2OneChannel<byte[]> txMsgChannel = Channel.<byte[]> any2one();
+        AltingChannelInput<byte[]> txMsgIn = txMsgChannel.in();
+        ChannelOutput<byte[]> txMsgOut = JcspUtils.logDeadlock(txMsgChannel.out());
+
+        
+        Any2OneChannel<NodeManager.CRToken> demandShuffleChannelChannel = Channel.<NodeManager.CRToken> any2one();
+        AltingChannelInput<NodeManager.CRToken> demandShuffleChannelIn = demandShuffleChannelChannel.in();
+        ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut = JcspUtils.logDeadlock(demandShuffleChannelChannel.out());
+        
+        
+        Any2OneChannel<NodeManager.ChannelReader> channelReaderShuffleBChannel = Channel.<NodeManager.ChannelReader> any2one();
+        AltingChannelInput<NodeManager.ChannelReader> channelReaderShuffleBIn = channelReaderShuffleBChannel.in();
+        ChannelOutput<NodeManager.ChannelReader> channelReaderShuffleBOut = JcspUtils.logDeadlock(channelReaderShuffleBChannel.out());
+        
+        Any2OneChannel<CommChannel> incomingConnectionChannel = Channel.<CommChannel> any2one();
+        AltingChannelInput<CommChannel> incomingConnectionIn = incomingConnectionChannel.in();
+        ChannelOutput<CommChannel> incomingConnectionOut = JcspUtils.logDeadlock(incomingConnectionChannel.out());
+
+        Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one();
+        AltingChannelInput<List<Comm>> subscribeIn = subscribeChannel.in();
+        ChannelOutput<List<Comm>> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
+
+        
+        new ProcessManager(new NodeManager(dataOwner, id, txMsgIn, internalRxMsgOut, demandShuffleChannelIn, internalChannelReaderShuffleAOut, channelReaderShuffleBIn, incomingConnectionIn, subscribeIn, internalCommStatusOut)).start();
+        NodeManager.NMInterface nmi = new NodeManager.NMInterface(txMsgOut, internalRxMsgIn, demandShuffleChannelOut, internalChannelReaderShuffleAIn, channelReaderShuffleBOut, incomingConnectionOut, subscribeOut, internalCommStatusIn);
+        nodes.put(id, nmi);
+        return nmi;
+    }
     
     @Override
     public void run() {
@@ -84,8 +140,9 @@ public class CommsManager implements CSProcess {
         //TODO Add verification to make sure nodes' claims match their TLS credentials
         //DO Read Identification message first off, transfer channel
         //DO Find deadlock cycles
+        //DO Check TODO table for messages to send when
         
-        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalMsgRxIn, internalCommChannelIn});
+        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn});
         while (true) {
             switch (alt.priSelect()) {
                 case 0: { // aadIn
@@ -98,26 +155,10 @@ public class CommsManager implements CSProcess {
                         broadcastMsgOut.accept(msg);
                     }
                     
+                    //DO Parallel
                     // Tx Ad to connected nodes
-                    for (Iterator<ArrayList<CommChannel>> ccsi = connections.values().iterator(); ccsi.hasNext();) {
-                        ArrayList<CommChannel> ccs = ccsi.next();
-                        if (!ccs.isEmpty()) {
-                            CommChannel cc = ccs.get(0);
-                            try {
-                                cc.write(ByteBuffer.wrap(msg));
-                            } catch (IOException ex) {
-                                Logger.getLogger(CommsManager.class.getName()).log(Level.SEVERE, null, ex);
-                                System.err.println("CommsManager IOException broadcasting Ad - removing channel");
-                                try {
-                                    cc.close();
-                                } catch (IOException ex1) {
-                                }
-                                ccs.remove(0);
-                            }
-                        } else {
-                            //TODO Should we log?
-                            //System.err.println("CommsManager - no comm open for " + );
-                        }
+                    for (Entry<UUID, NodeManager.NMInterface> e : nodes.entrySet()) {
+                        e.getValue().txMsgOut.write(msg);
                     }
                     break;
                 }
@@ -144,48 +185,49 @@ public class CommsManager implements CSProcess {
                         if (nodes.containsKey(id)) {
                             nodes.get(id).subscribeOut.write(separated.get(id));
                         } else {
-                            // Blehhhhh, this is boilerplatey
-                            Any2OneChannel<byte[]> txMsgChannel = Channel.<byte[]> any2one();
-                            AltingChannelInput<byte[]> txMsgIn = txMsgChannel.in();
-                            ChannelOutput<byte[]> txMsgOut = txMsgChannel.out();
-
-                            Any2OneChannel<Pair<Object,byte[]>> rxMsgChannel = Channel.<Pair<Object,byte[]>> any2one();
-                            AltingChannelInput<Pair<Object,byte[]>> rxMsgIn = rxMsgChannel.in();
-                            ChannelOutput<Pair<Object,byte[]>> rxMsgOut = rxMsgChannel.out();
-
-                            Any2OneChannel<Object> shuffleChannelChannel = Channel.<Object> any2one();
-                            AltingChannelInput<Object> shuffleChannelIn = shuffleChannelChannel.in();
-                            ChannelOutput<Object> shuffleChannelOut = shuffleChannelChannel.out();
-
-                            Any2OneChannel<NodeManager.ChannelReader> channelReaderShuffleChannel = Channel.<NodeManager.ChannelReader> any2one();
-                            AltingChannelInput<NodeManager.ChannelReader> channelReaderShuffleIn = channelReaderShuffleChannel.in();
-                            ChannelOutput<NodeManager.ChannelReader> channelReaderShuffleOut = channelReaderShuffleChannel.out();
-
-                            Any2OneChannel<CommChannel> incomingConnectionChannel = Channel.<CommChannel> any2one();
-                            AltingChannelInput<CommChannel> incomingConnectionIn = incomingConnectionChannel.in();
-                            ChannelOutput<CommChannel> incomingConnectionOut = incomingConnectionChannel.out();
-
-                            Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one();
-                            AltingChannelInput<List<Comm>> subscribeIn = subscribeChannel.in();
-                            ChannelOutput<List<Comm>> subscribeOut = subscribeChannel.out();
-
-                            Any2OneChannel<Pair<Comm,Boolean>> commStatusChannel = Channel.<Pair<Comm,Boolean>> any2one();
-                            AltingChannelInput<Pair<Comm,Boolean>> commStatusIn = commStatusChannel.in();
-                            ChannelOutput<Pair<Comm,Boolean>> commStatusOut = commStatusChannel.out();
-
-                            new ProcessManager(new NodeManager(dataOwner, id, txMsgIn, rxMsgOut, shuffleChannelIn, channelReaderShuffleOut, incomingConnectionIn, subscribeIn, commStatusOut)).start();
-                            nodes.put(id, new NodeManager.NMInterface(txMsgOut, rxMsgIn, shuffleChannelOut, channelReaderShuffleIn, incomingConnectionOut, subscribeOut, commStatusIn));
+                            startNodeManager(id);
                             nodes.get(id).subscribeOut.write(separated.get(id));
                         }
                     }
                     break;
                 }
-                case 3: { // internalMsgRxIn
-                    //DO WRONG; read from the NMIs instead
+                case 3: { // internalRxMsgIn
+                    //DO WRONG; read from the NMIs instead...?
+                    Pair<NodeManager.CRToken,byte[]> msg = internalRxMsgIn.read();
+                    Object o = dataOwner.deserialize(msg.b);
+                    if (o instanceof IdentificationMessage) {
+                        IdentificationMessage im = (IdentificationMessage) o;
+                        if (!Objects.equals(im.nodeId, msg.a.nodeId)) {
+                            // Wrong NodeManager; shuffle to correct
+                            msg.a.nodeId = im.nodeId;
+                            nodes.get(msg.a.nodeId).demandShuffleChannelOut.write(msg.a);
+                        }
+                    } else if (o instanceof Advertisement) {
+                        Advertisement ad = (Advertisement) o;
+                        radOut.write(ad);
+                    } else if (o instanceof Summary) {
+                        Summary rsum = (Summary) o;
+                        rsumOut.write(rsum);
+                    }
                     DO;
+                    // Request data: get data, add to list, set timer to 0 while list, on timer write chunks
                     break;
                 }
-                case 4: { // internalCommChannelIn
+                case 4: { // internalChannelReaderShuffleAIn
+                    NodeManager.ChannelReader cr = internalChannelReaderShuffleAIn.read();
+                    UUID id = cr.token.nodeId;
+                    if (!nodes.containsKey(id)) {
+                        startNodeManager(id);
+                    }
+                    nodes.get(id).channelReaderShuffleBOut.write(cr);
+                }
+                case 5: { // internalCommStatusIn
+                    Pair<Comm,Boolean> status = internalCommStatusIn.read();
+                    //TODO Status of incame connections, too?
+                    statusOut.write(status);
+                    break;
+                }
+                case 6: { // internalCommChannelIn
                     CommChannel cc = internalCommChannelIn.read();
                     // We don't know which node connected to us, yet, so it goes to the blank NM
                     nodes.get(null).incomingConnectionOut.write(cc);

@@ -14,6 +14,7 @@ import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
+import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
@@ -35,36 +36,61 @@ import jcsp.lang.ProcessManager;
 public class NodeManager implements CSProcess {
     public static class NMInterface {
         public final ChannelOutput<byte[]> txMsgOut;
-        public final AltingChannelInput<Pair<Object,byte[]>> rxMsgIn;
-        public final ChannelOutput<Object> shuffleChannelOut;
-        public final AltingChannelInput<ChannelReader> channelReaderShuffleIn;
+        public final AltingChannelInput<Pair<NodeManager.CRToken,byte[]>> rxMsgIn;
+        public final ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut;
+        public final AltingChannelInput<ChannelReader> channelReaderShuffleAIn;
+        public final ChannelOutput<ChannelReader> channelReaderShuffleBOut;
         public final ChannelOutput<CommChannel> incomingConnectionOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
         public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
 
-        public NMInterface(ChannelOutput<byte[]> txMsgOut, AltingChannelInput<Pair<Object, byte[]>> rxMsgIn, ChannelOutput<Object> shuffleChannelOut, AltingChannelInput<ChannelReader> channelReaderShuffleIn, ChannelOutput<CommChannel> incomingConnectionOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn) {
+        public NMInterface(ChannelOutput<byte[]> txMsgOut, AltingChannelInput<Pair<NodeManager.CRToken, byte[]>> rxMsgIn, ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut, AltingChannelInput<ChannelReader> channelReaderShuffleAIn, ChannelOutput<ChannelReader> channelReaderShuffleBOut, ChannelOutput<CommChannel> incomingConnectionOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn) {
             this.txMsgOut = txMsgOut;
             this.rxMsgIn = rxMsgIn;
-            this.shuffleChannelOut = shuffleChannelOut;
-            this.channelReaderShuffleIn = channelReaderShuffleIn;
+            this.demandShuffleChannelOut = demandShuffleChannelOut;
+            this.channelReaderShuffleAIn = channelReaderShuffleAIn;
+            this.channelReaderShuffleBOut = channelReaderShuffleBOut;
             this.incomingConnectionOut = incomingConnectionOut;
             this.subscribeOut = subscribeOut;
             this.commStatusIn = commStatusIn;
         }
     }
     
+    public static class CRToken {
+        public UUID nodeId;
+
+        public CRToken(UUID nodeId) {
+            this.nodeId = nodeId;
+        }
+    }
+    
     public static class ChannelReader implements CSProcess {
+        public static final Comparator<? super ChannelReader> COMPARATOR = (a, b) -> {
+            Comm ca = a.cc.comm;
+            Comm cb = b.cc.comm;
+            double sa = Comm.DEFAULT_SCORE;
+            double sb = Comm.DEFAULT_SCORE;
+            if (ca != null) {
+                sa = ca.score;
+            }
+            if (cb != null) {
+                sb = cb.score;
+            }
+            return Double.compare(sa, sb);
+        };
+        
         // Token used to identify this CR without passing around the CR itself
-        public final Object token = new Object();
+        public final CRToken token;
         final CommChannel cc;
         final AltingChannelInput<byte[]> rxMsgIn; // Use externally
         private final ChannelOutput<byte[]> rxMsgOut;
 
-        public ChannelReader(CommChannel cc) {
+        public ChannelReader(CommChannel cc, UUID nodeId) {
             this.cc = cc;
             Any2OneChannel<byte[]> rxMsgChannel = Channel.<byte[]> any2one();
             this.rxMsgIn = rxMsgChannel.in();
             this.rxMsgOut = rxMsgChannel.out();
+            this.token = new CRToken(nodeId);
         }
         
         @Override
@@ -109,9 +135,10 @@ public class NodeManager implements CSProcess {
     
 
     private final AltingChannelInput<byte[]> txMsgIn;
-    private final ChannelOutput<Pair<Object,byte[]>> rxMsgOut;
-    private final AltingChannelInput<Object> shuffleChannelIn;
-    private final ChannelOutput<ChannelReader> channelReaderShuffleOut;
+    private final ChannelOutput<Pair<CRToken,byte[]>> rxMsgOut;
+    private final AltingChannelInput<CRToken> demandShuffleChannelIn;
+    private final ChannelOutput<ChannelReader> channelReaderShuffleAOut;
+    private final AltingChannelInput<ChannelReader> channelReaderShuffleBIn;
     private final AltingChannelInput<CommChannel> incomingConnectionIn;
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutput<Pair<Comm,Boolean>> commStatusOut;
@@ -130,26 +157,28 @@ public class NodeManager implements CSProcess {
      * @param subscribeIn
      * @param commStatusOut 
      */
-    public NodeManager(DataOwner dataOwner, UUID nodeId, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<Pair<Object, byte[]>> rxMsgOut, AltingChannelInput<Object> shuffleChannelIn, ChannelOutput<ChannelReader> channelReaderShuffleOut, AltingChannelInput<CommChannel> incomingConnectionIn, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Pair<Comm,Boolean>> commStatusOut) {
+    public NodeManager(DataOwner dataOwner, UUID nodeId, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<Pair<CRToken, byte[]>> rxMsgOut, AltingChannelInput<CRToken> demandShuffleChannelIn, ChannelOutput<ChannelReader> channelReaderShuffleAOut, AltingChannelInput<ChannelReader> channelReaderShuffleBIn, AltingChannelInput<CommChannel> incomingConnectionIn, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Pair<Comm,Boolean>> commStatusOut) {
         this.dataOwner = dataOwner;
         this.nodeId = nodeId;
         this.txMsgIn = txMsgIn;
         this.rxMsgOut = rxMsgOut;
-        this.shuffleChannelIn = shuffleChannelIn;
-        this.channelReaderShuffleOut = channelReaderShuffleOut;
+        this.demandShuffleChannelIn = demandShuffleChannelIn;
+        this.channelReaderShuffleAOut = channelReaderShuffleAOut;
+        this.channelReaderShuffleBIn = channelReaderShuffleBIn;
         this.incomingConnectionIn = incomingConnectionIn;
         this.subscribeIn = subscribeIn;
         this.commStatusOut = commStatusOut;
     }
 
-    private static final int N = 4; // Number of fixed Guards
+    private static final int N = 5; // Number of fixed Guards
     
     private Alternative regenAlt() {
         Guard[] guards = new Guard[N + connections.size()];
         guards[0] = incomingConnectionIn;
         guards[1] = subscribeIn;
         guards[2] = txMsgIn;
-        guards[3] = shuffleChannelIn;
+        guards[3] = demandShuffleChannelIn;
+        guards[4] = channelReaderShuffleBIn;
         for (int i = 0; i < connections.size(); i++) {
             guards[i+N] = connections.get(i).rxMsgIn;
         }
@@ -175,7 +204,7 @@ public class NodeManager implements CSProcess {
                             //TODO Verify cert matches id
                             cc = new TlsWrapper(dataOwner, false, cc);
                         }
-                        ChannelReader cr = new ChannelReader(cc);
+                        ChannelReader cr = new ChannelReader(cc, nodeId);
                         new ProcessManager(cr).start();
                         //DO Send identification?
                         connections.add(cr);
@@ -185,19 +214,7 @@ public class NodeManager implements CSProcess {
                         Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                     }
                     
-                    connections.sort((a,b) -> {
-                        Comm ca = a.cc.comm;
-                        Comm cb = b.cc.comm;
-                        double sa = Comm.DEFAULT_SCORE;
-                        double sb = Comm.DEFAULT_SCORE;
-                        if (ca != null) {
-                            sa = ca.score;
-                        }
-                        if (cb != null) {
-                            sb = cb.score;
-                        }
-                        return Double.compare(sa, sb);
-                    });
+                    connections.sort(ChannelReader.COMPARATOR);
                     alt = regenAlt();   
                     break;
                 }
@@ -212,7 +229,7 @@ public class NodeManager implements CSProcess {
                                 //TODO Verify cert matches id
                                 cc = new TlsWrapper(dataOwner, true, cc);
                             }
-                            ChannelReader cr = new ChannelReader(cc);
+                            ChannelReader cr = new ChannelReader(cc, nodeId);
                             new ProcessManager(cr).start();
                             
                             // Send self-identification
@@ -240,19 +257,7 @@ public class NodeManager implements CSProcess {
                             commStatusOut.write(Pair.gen(comm, false));
                         }
                     }
-                    connections.sort((a,b) -> {
-                        Comm ca = a.cc.comm;
-                        Comm cb = b.cc.comm;
-                        double sa = Comm.DEFAULT_SCORE;
-                        double sb = Comm.DEFAULT_SCORE;
-                        if (ca != null) {
-                            sa = ca.score;
-                        }
-                        if (cb != null) {
-                            sb = cb.score;
-                        }
-                        return Double.compare(sa, sb);
-                    });
+                    connections.sort(ChannelReader.COMPARATOR);
                     alt = regenAlt();
                     break;
                 }
@@ -283,19 +288,25 @@ public class NodeManager implements CSProcess {
                     }
                     break;
                 }
-                case 3: { // shuffleChannelIn
-                    Object token = shuffleChannelIn.read();
+                case 3: { // demandShuffleChannelIn
+                    CRToken token = demandShuffleChannelIn.read();
                     for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
                         ChannelReader cr = cri.next();
                         if (cr.token == token) {
                             System.out.println("NodeManager giving up channel reader: " + cr.cc.comm);
-                            channelReaderShuffleOut.write(cr);
+                            channelReaderShuffleAOut.write(cr);
                             cri.remove();
                             alt = regenAlt();
                             break;
                         }
                     }
                     break;
+                }
+                case 4: { // channelReaderShuffleBIn
+                    ChannelReader cr = channelReaderShuffleBIn.read();
+                    connections.add(cr);
+                    connections.sort(ChannelReader.COMPARATOR);
+                    alt = regenAlt();
                 }
                 default: { // rxMsgIn
                     ChannelReader cr = connections.get(idx-N);

@@ -162,6 +162,8 @@ Ok, comm format:
 Message types
   Advertisement
   ID - identifies the immediate sender, specifically
+  DataChunk
+  Summary
 
 Augh, wait, how to decide which NodeManager gets an incoming connection?
   We could have a separate NM that just handles incame connections.
