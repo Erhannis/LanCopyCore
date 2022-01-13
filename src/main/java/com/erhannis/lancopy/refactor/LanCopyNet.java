@@ -63,9 +63,9 @@ public class LanCopyNet {
         AltingChannelInput<Pair<Comm,Boolean>> commStatusIn = commStatusChannel.in();
         ChannelOutput<Pair<Comm,Boolean>> commStatusOut = JcspUtils.logDeadlock(commStatusChannel.out());
         
-        Any2OneChannel<List<Comm>> commsChannel = Channel.<List<Comm>> any2one();
-        AltingChannelInput<List<Comm>> commsIn = commsChannel.in();
-        ChannelOutput<List<Comm>> commsOut = JcspUtils.logDeadlock(commsChannel.out());
+        Any2OneChannel<List<Comm>> lcommsChannel = Channel.<List<Comm>> any2one();
+        AltingChannelInput<List<Comm>> lcommsIn = lcommsChannel.in();
+        ChannelOutput<List<Comm>> lcommsOut = JcspUtils.logDeadlock(lcommsChannel.out());
 
         Any2OneChannel<Collection<Comm>> pokeChannel = Channel.<Collection<Comm>> any2one(new InfiniteBuffer<>());
         AltingChannelInput<Collection<Comm>> pokeIn = pokeChannel.in();
@@ -100,13 +100,10 @@ public class LanCopyNet {
             summaryUpdatedSplitter,
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
-            new MulticastAdvertiser(ipv4address, ipv4port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
-            new MulticastAdvertiser(ipv6address, ipv6port, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
-            new BroadcastAdvertiser(null, broadcastPort, dataOwner, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>())),
-            new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
-            new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
-            new AdGenerator(dataOwner, rxAdOut, commsIn),
-            new CommsManager(dataOwner, txBroadcastAdIn, rxBroadcastAdOut)
+//            new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
+//            new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
+            new AdGenerator(dataOwner, rxAdOut, lcommsIn),
+            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn)
         })).start();
         return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, pokeOut, getRosterOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }

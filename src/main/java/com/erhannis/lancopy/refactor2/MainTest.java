@@ -67,9 +67,9 @@ public class MainTest {
             Logger.getLogger(MainTest.class.getName()).log(Level.SEVERE, null, ex);
         }
         
-        Any2OneChannel<Comm> lcommChannel = Channel.<Comm> any2one();
-        AltingChannelInput<Comm> lcommIn = lcommChannel.in();
-        ChannelOutput<Comm> lcommOut = lcommChannel.out();
+        Any2OneChannel<List<Comm>> lcommsChannel = Channel.<List<Comm>> any2one();
+        AltingChannelInput<List<Comm>> lcommsIn = lcommsChannel.in();
+        ChannelOutput<List<Comm>> lcommsOut = lcommsChannel.out();
 
         Any2OneChannel<Advertisement> radChannel = Channel.<Advertisement> any2one();
         AltingChannelInput<Advertisement> radIn = radChannel.in();
@@ -105,13 +105,13 @@ public class MainTest {
         Advertisement lad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), lComms, true, null);
 
         
-        CommsManager cm = new CommsManager(dataOwner, lcommOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn);
+        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn);
         
         new ProcessManager(new Parallel(new CSProcess[]{
             cm,
             () -> {
                 while (true) {
-                    System.out.println("rx lcomm: " + lcommIn.read());
+                    System.out.println("rx lcomms: " + lcommsIn.read());
                 }
             }, () -> {
                 while (true) {

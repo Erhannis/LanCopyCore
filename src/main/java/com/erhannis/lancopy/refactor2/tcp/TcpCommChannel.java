@@ -18,6 +18,7 @@ import java.nio.channels.SocketChannel;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import jcsp.helpers.JcspUtils;
+import jcsp.lang.CSProcess;
 import jcsp.lang.ChannelOutput;
 
 /**
@@ -57,21 +58,37 @@ public class TcpCommChannel extends CommChannel {
         this.rawChannel = channel;
     }
     
+    public static abstract class ServerThread {
+        public final int boundPort;
+
+        public ServerThread(int boundPort) {
+            this.boundPort = boundPort;
+        }
+        
+        public abstract void run() throws IOException;
+    }
+    
     /**
-     * Run this in a thread.  It will listen for incoming connections
+     * Run this, use the port, then ServerThread in a thread.  It will listen for incoming connections
      * and pass each SocketChannel back on `incomingConnectionCallback`.
      * 
      * @param incomingConnectionCallback 
      */
     //TODO Do we need to separately handle interfaces, or ipv6, or anything?  Bind to separate addresses or anything?
-    public static void serverThread(ChannelOutput<CommChannel> incomingConnectionOut, int port) throws IOException {
+    public static ServerThread serverThread(ChannelOutput<CommChannel> incomingConnectionOut, int port) throws IOException {
         System.out.println("TcpCommChannel.serverThread, waiting for incoming connections on " + port);
         ServerSocketChannel ss = ServerSocketChannel.open();
         ss.socket().bind(new InetSocketAddress(port));
-        while (true) {
-            SocketChannel sc = ss.accept();
-            incomingConnectionOut.write(new TcpCommChannel(sc));
-        }
+        int boundPort = ss.socket().getLocalPort();
+        return new ServerThread(boundPort) {
+            @Override
+            public void run() throws IOException {
+                while (true) {
+                    SocketChannel sc = ss.accept();
+                    incomingConnectionOut.write(new TcpCommChannel(sc));
+                }
+            }            
+        };
     }
     
     @Override

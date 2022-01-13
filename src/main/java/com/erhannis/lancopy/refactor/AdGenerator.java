@@ -32,7 +32,7 @@ public class AdGenerator implements CSProcess {
     
     @Override
     public void run() {
-        Advertisement ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), new ArrayList<>(), dataOwner.);
+        Advertisement ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), new ArrayList<>(), dataOwner.encrypted, dataOwner.tlsContext.sha256Fingerprint);
         try {
             Alternative alt = new Alternative(new Guard[]{commsIn});
             while (true) {
@@ -40,8 +40,8 @@ public class AdGenerator implements CSProcess {
                     case 0: // commsIn
                         List<Comm> comms = commsIn.read();
                         ArrayList<Comm> combined = new ArrayList<>(comms);
-                        combined.addAll(ad.comms);
-                        ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), combined);
+                        combined.addAll(ad.comms); //TODO Permit replace?
+                        ad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), combined, dataOwner.encrypted, dataOwner.tlsContext.sha256Fingerprint);
                         adOut.write(ad);
                         break;
                 }
