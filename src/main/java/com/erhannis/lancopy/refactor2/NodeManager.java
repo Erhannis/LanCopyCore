@@ -307,6 +307,7 @@ public class NodeManager implements CSProcess {
                     connections.add(cr);
                     connections.sort(ChannelReader.COMPARATOR);
                     alt = regenAlt();
+                    break;
                 }
                 default: { // rxMsgIn
                     ChannelReader cr = connections.get(idx-N);

@@ -129,9 +129,10 @@ public class CommsManager implements CSProcess {
     public void run() {
         Any2OneChannel<CommChannel> internalCommChannelChannel = Channel.<CommChannel> any2one();
         AltingChannelInput<CommChannel> internalCommChannelIn = internalCommChannelChannel.in();
-        ChannelOutput<CommChannel> internalCommChannelOut = internalCommChannelChannel.out();
+        ChannelOutput<CommChannel> internalCommChannelOut = JcspUtils.logDeadlock(internalCommChannelChannel.out());
         
         //DO Add Blank NM
+        //DO Make sure logdeadlock
         
         //TODO Move these somewhere else?  Abstract?
         new ProcessManager(new Parallel(new CSProcess[] {
@@ -198,12 +199,10 @@ public class CommsManager implements CSProcess {
                             separated.get(comm.owner.id).add(comm);
                         }
                         for (UUID id : separated.keySet()) {
-                            if (nodes.containsKey(id)) {
-                                nodes.get(id).subscribeOut.write(separated.get(id));
-                            } else {
+                            if (!nodes.containsKey(id)) {
                                 startNodeManager(id, true);
-                                nodes.get(id).subscribeOut.write(separated.get(id));
                             }
+                            nodes.get(id).subscribeOut.write(separated.get(id));
                         }
                         break;
                     }
@@ -213,9 +212,13 @@ public class CommsManager implements CSProcess {
                         if (o instanceof IdentificationMessage) {
                             IdentificationMessage im = (IdentificationMessage) o;
                             if (!Objects.equals(im.nodeId, msg.a.nodeId)) {
+                                UUID fromId = msg.a.nodeId;
                                 // Wrong NodeManager; shuffle to correct
                                 msg.a.nodeId = im.nodeId;
-                                nodes.get(msg.a.nodeId).demandShuffleChannelOut.write(msg.a);
+//                                if (!nodes.containsKey(msg.a.nodeId)) {
+//                                    startNodeManager(msg.a.nodeId, true);
+//                                }
+                                nodes.get(fromId).demandShuffleChannelOut.write(msg.a);
                             }
                         } else if (o instanceof Advertisement) {
                             Advertisement ad = (Advertisement) o;
@@ -226,7 +229,7 @@ public class CommsManager implements CSProcess {
                         } else {
                             dataOwner.errOnce("ERR CommsManager got unhandled msg: " + o);
                         }
-                        DO;
+                        //DO ;
                         // Request data: get data, add to list, set timer to 0 while list, on timer write chunks
                         break;
                     }
@@ -237,6 +240,7 @@ public class CommsManager implements CSProcess {
                             startNodeManager(id, true);
                         }
                         nodes.get(id).channelReaderShuffleBOut.write(cr);
+                        break;
                     }
                     case 5: { // internalCommStatusIn
                         Pair<Comm,Boolean> status = internalCommStatusIn.read();
