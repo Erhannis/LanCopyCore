@@ -141,6 +141,7 @@ public class ContextFactory {
                 }                
 
                 private void handleCertFailure(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
+                    //DO Deal with multiple simultaneous attempts on the same cert
                     Throwable cause = e.getCause();
                     boolean askAccept = false;
                     if (cause instanceof sun.security.provider.certpath.SunCertPathBuilderException) {

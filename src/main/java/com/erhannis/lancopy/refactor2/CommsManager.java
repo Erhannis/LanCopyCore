@@ -231,6 +231,7 @@ public class CommsManager implements CSProcess {
         //DO Check TODO table for messages to send when
         //DO Double check case/breaks
         //DO Add manual URLs
+        //DO Do call channels
         
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
