@@ -256,7 +256,7 @@ public class NodeManager implements CSProcess {
                                     Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                                     System.err.println("NodeManager error subscribing; closed comm: " + cr.cc.comm);
                                     System.err.println("NM poisoning " + cr.token);
-                                    cr.rxMsgOut.poison(10);
+                                    cr.rxMsgIn.poison(10);
                                     try {
                                         cr.cc.close();
                                     } catch (IOException ex1) {
@@ -285,7 +285,7 @@ public class NodeManager implements CSProcess {
                                 Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                                 System.err.println("NodeManager error tx; removing closed comm: " + cr.cc.comm);
                                 System.err.println("NM poisoning " + cr.token);
-                                cr.rxMsgOut.poison(10);
+                                cr.rxMsgIn.poison(10);
                                 try {
                                     cr.cc.close();
                                 } catch (IOException ex1) {
@@ -334,7 +334,7 @@ public class NodeManager implements CSProcess {
                             // Reader had a problem; close channel
                             System.err.println("NodeManager rx null; closing cc: " + cr.cc.comm);
                             System.err.println("NM poisoning " + cr.token);
-                            cr.rxMsgOut.poison(10);
+                            cr.rxMsgIn.poison(10);
                             try {
                                 cr.cc.close();
                             } catch (IOException ex) {
