@@ -70,7 +70,7 @@ public class NodeTracker implements CSProcess {
 
         One2OneChannelSymmetricInt joinChannel = Channel.one2oneSymmetricInt();
         this.joinIn = joinChannel.in();
-        this.joinOut = joinChannel.out();
+        this.joinOut = joinChannel.out(); //TODO It'd be nice if I could logDeadlock this....
         
         this.adCallServer = adCallServer;
         this.summaryCallServer = summaryCallServer;

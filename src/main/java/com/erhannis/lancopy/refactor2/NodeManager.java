@@ -20,6 +20,8 @@ import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.JcspUtils;
+import jcsp.helpers.JcspUtils.DeadlockLoggingChannelOutput;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
@@ -27,6 +29,7 @@ import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.Guard;
+import jcsp.lang.PoisonException;
 import jcsp.lang.ProcessManager;
 
 /**
@@ -83,40 +86,44 @@ public class NodeManager implements CSProcess {
         public final CRToken token;
         final CommChannel cc;
         final AltingChannelInput<byte[]> rxMsgIn; // Use externally
-        private final ChannelOutput<byte[]> rxMsgOut;
+        private final DeadlockLoggingChannelOutput<byte[]> rxMsgOut;
 
         public ChannelReader(CommChannel cc, UUID nodeId) {
             this.cc = cc;
-            Any2OneChannel<byte[]> rxMsgChannel = Channel.<byte[]> any2one();
+            Any2OneChannel<byte[]> rxMsgChannel = Channel.<byte[]> any2one(5);
             this.rxMsgIn = rxMsgChannel.in();
-            this.rxMsgOut = rxMsgChannel.out();
+            this.rxMsgOut = JcspUtils.logDeadlock(rxMsgChannel.out());
             this.token = new CRToken(nodeId);
         }
         
         @Override
         public void run() {
-            while (true) {
-                try {
-                    ByteBuffer bbLen = ByteBuffer.allocate(4);
-                    while (bbLen.remaining() > 0) {
-                        if (cc.read(bbLen) < 0) {
-                            rxMsgOut.write(null);
+            try {
+                while (true) {
+                    try {
+                        ByteBuffer bbLen = ByteBuffer.allocate(4);
+                        while (bbLen.remaining() > 0) {
+                            if (cc.read(bbLen) < 0) {
+                                rxMsgOut.write(null, this.token+"");
+                            }
                         }
-                    }
-                    int len = Ints.fromByteArray(bbLen.array());
-                    ByteBuffer bbMsg = ByteBuffer.allocate(len);
-                    while (bbMsg.remaining() > 0) {
-                        if (cc.read(bbMsg) < 0) {
-                            rxMsgOut.write(null);
+                        int len = Ints.fromByteArray(bbLen.array());
+                        ByteBuffer bbMsg = ByteBuffer.allocate(len);
+                        while (bbMsg.remaining() > 0) {
+                            if (cc.read(bbMsg) < 0) {
+                                rxMsgOut.write(null, this.token+"");
+                            }
                         }
+                        rxMsgOut.write(bbMsg.array());
+                    } catch (IOException ex) {
+                        Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
+                        System.err.println("NM.ChannelReader error, exiting - " + cc.comm + " : " + this.token);
+                        rxMsgOut.write(null, this.token+"");
+                        return;
                     }
-                    rxMsgOut.write(bbMsg.array());
-                } catch (IOException ex) {
-                    Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                    System.err.println("NM.ChannelReader error, exiting - " + cc.comm);
-                    rxMsgOut.write(null);
-                    return;
                 }
+            } catch (PoisonException pe) {
+                System.err.println("NM.CR poisoned, " + this.token);
             }
         }
     }
@@ -190,94 +197,150 @@ public class NodeManager implements CSProcess {
         System.out.println("NodeManager starting up: " + nodeId);
         Alternative alt = regenAlt();
         while (true) {
-            //TODO Should we be able to rx messages while blocked trying to send a message?  ...Not until it becomes important, I think.
-            //  Like, it might be more efficient, but only under certain circumstances, and it feels confusing to me.
-            int idx = alt.fairSelect();
-            switch (idx) {
-                case 0: { // incomingConnectionIn
-                    CommChannel cc = incomingConnectionIn.read();
-                    
-                    try {
-                        if (dataOwner.encrypted) {
-                            //TODO Are interrupts still a thing?
-                            //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
-                            //TODO Verify cert matches id
-                            cc = new TlsWrapper(dataOwner, false, cc);
-                        }
-                        ChannelReader cr = new ChannelReader(cc, nodeId);
-                        new ProcessManager(cr).start();
-                        //DO Send identification?
-                        connections.add(cr);
-                        dataOwner.errOnce("//TODO Figure out how to show incame connections status");
-                        //commStatusOut.write(Pair.gen(comm, true));
-                    } catch (IOException ex) {
-                        Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                    }
-                    
-                    connections.sort(ChannelReader.COMPARATOR);
-                    alt = regenAlt();   
-                    break;
-                }
-                case 1: { // subscribeIn
-                    List<Comm> comms = subscribeIn.read();
-                    //DO Optionally parallel
-                    for (Comm comm : comms) {
+            try {
+                //TODO Should we be able to rx messages while blocked trying to send a message?  ...Not until it becomes important, I think.
+                //  Like, it might be more efficient, but only under certain circumstances, and it feels confusing to me.
+                int idx = alt.fairSelect();
+                switch (idx) {
+                    case 0: { // incomingConnectionIn
+                        CommChannel cc = incomingConnectionIn.read();
+
                         try {
-                            CommChannel cc = comm.connect();
                             if (dataOwner.encrypted) {
                                 //TODO Are interrupts still a thing?
+                                //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
                                 //TODO Verify cert matches id
-                                cc = new TlsWrapper(dataOwner, true, cc);
+                                cc = new TlsWrapper(dataOwner, false, cc);
                             }
                             ChannelReader cr = new ChannelReader(cc, nodeId);
                             new ProcessManager(cr).start();
-                            
-                            // Send self-identification
+                            System.out.println("NM wrapped CR: " + cr.token);
+                            //DO Send identification?
+                            connections.add(cr);
+                            dataOwner.errOnce("//TODO Figure out how to show incame connections status");
+                            //commStatusOut.write(Pair.gen(comm, true));
+                        } catch (IOException ex) {
+                            Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+
+                        connections.sort(ChannelReader.COMPARATOR);
+                        alt = regenAlt();   
+                        break;
+                    }
+                    case 1: { // subscribeIn
+                        List<Comm> comms = subscribeIn.read();
+                        //DO Optionally parallel
+                        for (Comm comm : comms) {
                             try {
-                                //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
-                                byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                CommChannel cc = comm.connect();
+                                if (dataOwner.encrypted) {
+                                    //TODO Are interrupts still a thing?
+                                    //TODO Verify cert matches id
+                                    cc = new TlsWrapper(dataOwner, true, cc);
+                                }
+                                ChannelReader cr = new ChannelReader(cc, nodeId);
+                                new ProcessManager(cr).start();
+                                System.out.println("NM created CR: " + cr.token);
+                            
+                                // Send self-identification
+                                try {
+                                    //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
+                                    byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                    cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
+                                    cr.cc.write(ByteBuffer.wrap(msg));
+
+                                    // If the above lines threw, we don't want to add this connection, anyway
+                                    connections.add(cr);
+                                    commStatusOut.write(Pair.gen(comm, true));
+                                } catch (IOException ex) {
+                                    Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
+                                    System.err.println("NodeManager error subscribing; closed comm: " + cr.cc.comm);
+                                    System.err.println("NM poisoning " + cr.token);
+                                    cr.rxMsgOut.poison(10);
+                                    try {
+                                        cr.cc.close();
+                                    } catch (IOException ex1) {
+                                        Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
+                                    }
+                                    commStatusOut.write(Pair.gen(comm, false));
+                                }
+                            } catch (Exception ex) {
+                                Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
+                                commStatusOut.write(Pair.gen(comm, false));
+                            }
+                        }
+                        connections.sort(ChannelReader.COMPARATOR);
+                        alt = regenAlt();
+                        break;
+                    }
+                    case 2: { // txMsgIn
+                        byte[] msg = txMsgIn.read();
+                        for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
+                            ChannelReader cr = cri.next();
+                            try {
                                 cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
                                 cr.cc.write(ByteBuffer.wrap(msg));
-
-                                // If the above lines threw, we don't want to add this connection, anyway
-                                connections.add(cr);
-                                commStatusOut.write(Pair.gen(comm, true));
+                                break; // We succeeded
                             } catch (IOException ex) {
                                 Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                                System.err.println("NodeManager error subscribing; closed comm: " + cr.cc.comm);
+                                System.err.println("NodeManager error tx; removing closed comm: " + cr.cc.comm);
+                                System.err.println("NM poisoning " + cr.token);
+                                cr.rxMsgOut.poison(10);
                                 try {
                                     cr.cc.close();
                                 } catch (IOException ex1) {
                                     Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
                                 }
-                                commStatusOut.write(Pair.gen(comm, false));
+                                cri.remove();
+                                alt = regenAlt();
+                                if (cr.cc.comm != null) {
+                                    commStatusOut.write(Pair.gen(cr.cc.comm, false));
+                                } else {
+                                    dataOwner.errOnce("//TODO Figure out how to show incame connections status");
+                                }
                             }
-                        } catch (Exception ex) {
-                            Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                            commStatusOut.write(Pair.gen(comm, false));
                         }
+                        break;
                     }
-                    connections.sort(ChannelReader.COMPARATOR);
-                    alt = regenAlt();
-                    break;
-                }
-                case 2: { // txMsgIn
-                    byte[] msg = txMsgIn.read();
-                    for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
-                        ChannelReader cr = cri.next();
-                        try {
-                            cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
-                            cr.cc.write(ByteBuffer.wrap(msg));
-                            break; // We succeeded
-                        } catch (IOException ex) {
-                            Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                            System.err.println("NodeManager error tx; removing closed comm: " + cr.cc.comm);
+                    case 3: { // demandShuffleChannelIn
+                        CRToken token = demandShuffleChannelIn.read();
+                        for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
+                            ChannelReader cr = cri.next();
+                            if (cr.token == token) {
+                                System.out.println("NodeManager giving up channel reader: " + cr.cc.comm);
+                                channelReaderShuffleAOut.write(cr);
+                                cri.remove();
+                                alt = regenAlt();
+                                break;
+                            }
+                        }
+                        break;
+                    }
+                    case 4: { // channelReaderShuffleBIn
+                        ChannelReader cr = channelReaderShuffleBIn.read();
+                        System.out.println("NM adopted CR: " + cr.token);
+                        connections.add(cr);
+                        connections.sort(ChannelReader.COMPARATOR);
+                        alt = regenAlt();
+                        break;
+                    }
+                    default: { // rxMsgIn
+                        ChannelReader cr = connections.get(idx-N);
+                        byte[] msg = cr.rxMsgIn.read();
+                        if (msg != null) {
+                            // Pass msg on to CM
+                            rxMsgOut.write(Pair.gen(cr.token, msg));
+                        } else {
+                            // Reader had a problem; close channel
+                            System.err.println("NodeManager rx null; closing cc: " + cr.cc.comm);
+                            System.err.println("NM poisoning " + cr.token);
+                            cr.rxMsgOut.poison(10);
                             try {
                                 cr.cc.close();
-                            } catch (IOException ex1) {
-                                Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
+                            } catch (IOException ex) {
+                                Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                             }
-                            cri.remove();
+                            connections.remove(idx-N);
                             alt = regenAlt();
                             if (cr.cc.comm != null) {
                                 commStatusOut.write(Pair.gen(cr.cc.comm, false));
@@ -285,54 +348,12 @@ public class NodeManager implements CSProcess {
                                 dataOwner.errOnce("//TODO Figure out how to show incame connections status");
                             }
                         }
+                        break;
                     }
-                    break;
                 }
-                case 3: { // demandShuffleChannelIn
-                    CRToken token = demandShuffleChannelIn.read();
-                    for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
-                        ChannelReader cr = cri.next();
-                        if (cr.token == token) {
-                            System.out.println("NodeManager giving up channel reader: " + cr.cc.comm);
-                            channelReaderShuffleAOut.write(cr);
-                            cri.remove();
-                            alt = regenAlt();
-                            break;
-                        }
-                    }
-                    break;
-                }
-                case 4: { // channelReaderShuffleBIn
-                    ChannelReader cr = channelReaderShuffleBIn.read();
-                    connections.add(cr);
-                    connections.sort(ChannelReader.COMPARATOR);
-                    alt = regenAlt();
-                    break;
-                }
-                default: { // rxMsgIn
-                    ChannelReader cr = connections.get(idx-N);
-                    byte[] msg = cr.rxMsgIn.read();
-                    if (msg != null) {
-                        // Pass msg on to CM
-                        rxMsgOut.write(Pair.gen(cr.token, msg));
-                    } else {
-                        // Reader had a problem; close channel
-                        try {
-                            System.err.println("NodeManager rx null; closing cc: " + cr.cc.comm);
-                            cr.cc.close();
-                        } catch (IOException ex) {
-                            Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                        }
-                        connections.remove(idx-N);
-                        alt = regenAlt();
-                        if (cr.cc.comm != null) {
-                            commStatusOut.write(Pair.gen(cr.cc.comm, false));
-                        } else {
-                            dataOwner.errOnce("//TODO Figure out how to show incame connections status");
-                        }
-                    }
-                    break;
-                }
+            } catch (Throwable t) {
+                System.err.println("NodeManager got error; continuing");
+                t.printStackTrace();
             }
         }
     }

@@ -44,6 +44,7 @@ import jcsp.lang.DisableableTimer;
 import jcsp.lang.Guard;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
+import jcsp.util.InfiniteBuffer;
 
 /**
  *
@@ -103,7 +104,7 @@ public class CommsManager implements CSProcess {
     
     private NodeManager.NMInterface startNodeManager(UUID id, boolean registerToSplitter) {
         // Blehhhhh, this is boilerplatey
-        Any2OneChannel<byte[]> txMsgChannel = Channel.<byte[]> any2one();
+        Any2OneChannel<byte[]> txMsgChannel = Channel.<byte[]> any2one(new InfiniteBuffer<>());
         AltingChannelInput<byte[]> txMsgIn = txMsgChannel.in();
         ChannelOutput<byte[]> txMsgOut = JcspUtils.logDeadlock(txMsgChannel.out());
         if (registerToSplitter) {
@@ -111,20 +112,20 @@ public class CommsManager implements CSProcess {
         }
 
         
-        Any2OneChannel<NodeManager.CRToken> demandShuffleChannelChannel = Channel.<NodeManager.CRToken> any2one();
+        Any2OneChannel<NodeManager.CRToken> demandShuffleChannelChannel = Channel.<NodeManager.CRToken> any2one(new InfiniteBuffer<>());
         AltingChannelInput<NodeManager.CRToken> demandShuffleChannelIn = demandShuffleChannelChannel.in();
         ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut = JcspUtils.logDeadlock(demandShuffleChannelChannel.out());
         
         
-        Any2OneChannel<NodeManager.ChannelReader> channelReaderShuffleBChannel = Channel.<NodeManager.ChannelReader> any2one();
+        Any2OneChannel<NodeManager.ChannelReader> channelReaderShuffleBChannel = Channel.<NodeManager.ChannelReader> any2one(new InfiniteBuffer<>());
         AltingChannelInput<NodeManager.ChannelReader> channelReaderShuffleBIn = channelReaderShuffleBChannel.in();
         ChannelOutput<NodeManager.ChannelReader> channelReaderShuffleBOut = JcspUtils.logDeadlock(channelReaderShuffleBChannel.out());
         
-        Any2OneChannel<CommChannel> incomingConnectionChannel = Channel.<CommChannel> any2one();
+        Any2OneChannel<CommChannel> incomingConnectionChannel = Channel.<CommChannel> any2one(new InfiniteBuffer<>());
         AltingChannelInput<CommChannel> incomingConnectionIn = incomingConnectionChannel.in();
         ChannelOutput<CommChannel> incomingConnectionOut = JcspUtils.logDeadlock(incomingConnectionChannel.out());
 
-        Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one();
+        Any2OneChannel<List<Comm>> subscribeChannel = Channel.<List<Comm>> any2one(new InfiniteBuffer<>());
         AltingChannelInput<List<Comm>> subscribeIn = subscribeChannel.in();
         ChannelOutput<List<Comm>> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
         
@@ -161,7 +162,7 @@ public class CommsManager implements CSProcess {
         String[] broadcastAddresses = TcpBroadcastBroadcastTransmitter.enumerateBroadcastAddresses();
         ArrayList<CSProcess> tbbts = new ArrayList<>();
         for (int i = 0; i < broadcastAddresses.length; i++) {
-            tbbts.add(new TcpBroadcastBroadcastTransmitter(broadcastAddresses[i], broadcastPort, this.broadcastMsgSplitter.register()));
+            tbbts.add(new TcpBroadcastBroadcastTransmitter(broadcastAddresses[i], broadcastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())));
         }
         
         //TODO Move these somewhere else?  Abstract?
@@ -194,6 +195,7 @@ public class CommsManager implements CSProcess {
                         } catch (SocketException ex) {
                             Logger.getLogger(CommsManager.class.getName()).log(Level.SEVERE, null, ex);
                         }
+                        //TODO Note that this is running separately from the CM, and so defies convention a little
                         lcommsOut.write(newComms); //TODO Note that these stack on top of whatever Comms are already in the Ad
                         
                         while (true) {
@@ -212,9 +214,9 @@ public class CommsManager implements CSProcess {
             new TcpBroadcastBroadcastReceiver(broadcastPort, internalRxBroadcastOut), //TODO Make channel poisonable, for closing?
             new Parallel(tbbts.toArray(new CSProcess[0])),
             new TcpMulticastBroadcastReceiver(ipv4MulticastPort, ipv4MulticastAddress, internalRxBroadcastOut), //TODO Ditto
-            new TcpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register()), //TODO Ditto
+            new TcpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
             new TcpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut), //TODO Ditto
-            new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register()), //TODO Ditto
+            new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
         })).start();
         
         
