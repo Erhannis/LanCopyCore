@@ -4,10 +4,21 @@
  */
 package com.erhannis.lancopy.refactor2.messages;
 
+import java.util.UUID;
+
 /**
  *
  * @author erhannis
  */
-public interface Message {
+public abstract class Message {
+    public final UUID correlationId;
     //TODO Store nodeId, correlationId, etc., here?
+    
+    public Message() {
+        this.correlationId = UUID.randomUUID();
+    }
+    
+    public Message(UUID correlationId) {
+        this.correlationId = correlationId;
+    }
 }

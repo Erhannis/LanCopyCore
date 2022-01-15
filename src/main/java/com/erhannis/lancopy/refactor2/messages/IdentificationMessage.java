@@ -10,7 +10,7 @@ import java.util.UUID;
  *
  * @author erhannis
  */
-public class IdentificationMessage implements Message {
+public class IdentificationMessage extends Message {
     public final UUID nodeId;
     //TODO Timestamp or anything?
 
@@ -18,6 +18,7 @@ public class IdentificationMessage implements Message {
         this.nodeId = nodeId;
     }
     
+    // Kryo
     private IdentificationMessage() {
         this.nodeId = null;
     }

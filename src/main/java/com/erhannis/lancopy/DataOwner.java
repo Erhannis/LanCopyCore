@@ -10,6 +10,9 @@ import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
+import com.erhannis.lancopy.refactor2.messages.DataChunkMessage;
+import com.erhannis.lancopy.refactor2.messages.DataRequestMessage;
+import com.erhannis.lancopy.refactor2.messages.DataStartMessage;
 import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.messages.Message;
 import com.erhannis.lancopy.refactor2.tls.ContextFactory;
@@ -69,8 +72,12 @@ public class DataOwner {
             kryo.register(Summary.class);
             kryo.register(Message.class);
             kryo.register(IdentificationMessage.class);
+            kryo.register(DataRequestMessage.class);
+            kryo.register(DataStartMessage.class);
+            kryo.register(DataChunkMessage.class);
             kryo.register(ArrayList.class);
             kryo.register(UUID.class, new UUIDSerializer());
+            kryo.register(byte[].class);
             UnmodifiableCollectionsSerializer.registerSerializers(kryo);
             //kryo.register(java.util.Collections.UnmodifiableRandomAccessList.class);
 

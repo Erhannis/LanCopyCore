@@ -25,6 +25,7 @@ import jcsp.helpers.SynchronousSplitter;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.AltingFunctionChannel;
+import jcsp.lang.AltingTaskChannel;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
 import jcsp.lang.CSTimer;
@@ -80,7 +81,8 @@ public class LanCopyNet {
         SynchronousSplitter<Summary> summaryUpdatedSplitter = new SynchronousSplitter<>();
         
         AltingFunctionChannel<UUID, Advertisement> adCall = new AltingFunctionChannel<>(true);
-        AltingFunctionChannel<List<Comm>, Pair<String, InputStream>> dataCall = new AltingFunctionChannel<>(true);
+        //TODO I'm torn whether this ought to return Data, or Pair<String, InputStream>
+        AltingTaskChannel<UUID, Pair<String, InputStream>> dataCall = new AltingTaskChannel<>(true);
         AltingFunctionChannel<UUID, Summary> summaryCall = new AltingFunctionChannel<>(true);
         AltingFunctionChannel<Void, List<Advertisement>> rosterCall = new AltingFunctionChannel<>(true);
         AltingFunctionChannel<Void, Data> localDataCall = new AltingFunctionChannel<>(true);
@@ -103,7 +105,7 @@ public class LanCopyNet {
 //            new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
 //            new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
-            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn)
+            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer())
         })).start();
         return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, pokeOut, getRosterOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }
@@ -117,11 +119,11 @@ public class LanCopyNet {
         public final ChannelOutput<List<Comm>> subscribeOut;
         public final ChannelOutput<Collection<Comm>> pokeOut;
         public final ChannelOutput<String> getRosterOut;
-        public final FCClient<List<Comm>, Pair<String, InputStream>> dataCall;
+        public final FCClient<UUID, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, ChannelOutput<String> getRosterOut, FCClient<List<Comm>, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, ChannelOutput<String> getRosterOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;

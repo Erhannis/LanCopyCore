@@ -5,10 +5,14 @@
 package com.erhannis.lancopy.refactor2;
 
 import com.erhannis.lancopy.DataOwner;
+import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
+import com.erhannis.lancopy.refactor2.messages.DataChunkMessage;
+import com.erhannis.lancopy.refactor2.messages.DataRequestMessage;
+import com.erhannis.lancopy.refactor2.messages.DataStartMessage;
 import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.tcp.TcpBroadcastBroadcastReceiver;
 import com.erhannis.lancopy.refactor2.tcp.TcpBroadcastBroadcastTransmitter;
@@ -18,7 +22,13 @@ import com.erhannis.lancopy.refactor2.tcp.TcpMulticastBroadcastTransmitter;
 import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
+import fi.iki.elonen.NanoHTTPD;
+import static fi.iki.elonen.NanoHTTPD.newChunkedResponse;
 import java.io.IOException;
+import java.io.InputStream;
+import java.io.OutputStream;
+import java.io.PipedInputStream;
+import java.io.PipedOutputStream;
 import java.net.InetAddress;
 import java.net.SocketException;
 import java.net.UnknownHostException;
@@ -32,10 +42,14 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
 import jcsp.helpers.SynchronousSplitter;
+import jcsp.helpers.TCServer.TaskItem;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
+import jcsp.lang.AltingFCServer;
+import jcsp.lang.AltingTCServer;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
@@ -51,13 +65,14 @@ import jcsp.util.InfiniteBuffer;
  * @author erhannis
  */
 public class CommsManager implements CSProcess {
+
     public static class CommsToken {
         // ???
     }
-
+    
     private final DataOwner dataOwner;
     
-    public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm,Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn) {
+      public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer) {
         this.dataOwner = dataOwner;
 
         this.lcommsOut = lcommsOut;
@@ -67,6 +82,12 @@ public class CommsManager implements CSProcess {
         this.lsumIn = lsumIn;
         this.statusOut = statusOut;
         this.subscribeIn = subscribeIn;
+        
+        this.summaryClient = summaryClient;
+        this.aadClient = aadClient;
+        this.rosterClient = rosterClient;
+        this.ldataClient = ldataClient;
+        this.dataServer = dataServer;
         
         Any2OneChannel<Pair<NodeManager.CRToken,byte[]>> internalRxMsgChannel = Channel.<Pair<NodeManager.CRToken,byte[]>> any2one();
         this.internalRxMsgIn = internalRxMsgChannel.in();
@@ -99,6 +120,12 @@ public class CommsManager implements CSProcess {
     private final ChannelOutput<Pair<Comm,Boolean>> internalCommStatusOut;
     private final SynchronousSplitter<byte[]> broadcastMsgSplitter;
     private final SynchronousSplitter<byte[]> txMsgSplitter;
+
+    private final FCClient<UUID, Summary> summaryClient;
+    private final FCClient<UUID, Advertisement> aadClient;
+    private final FCClient<Void, List<Advertisement>> rosterClient;
+    private final FCClient<Void, Data> ldataClient;
+    private final AltingTCServer<UUID, Pair<String, InputStream>> dataServer;    
 
     private HashMap<UUID, NodeManager.NMInterface> nodes = new HashMap<>();
     
@@ -228,12 +255,13 @@ public class CommsManager implements CSProcess {
         
         //TODO Add verification to make sure nodes' claims match their TLS credentials
         //DO Read Identification message first off, transfer channel
-        //DO Find deadlock cycles
-        //DO Make sure logdeadlock
         //DO Check TODO table for messages to send when
         //DO Double check case/breaks
         //DO Add manual URLs
         //DO Do call channels
+
+        //DO Find deadlock cycles
+        //DO Make sure logdeadlock
         
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
@@ -243,7 +271,10 @@ public class CommsManager implements CSProcess {
         } else {
             rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
         }
-        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, rebroadcastTimer});
+        DisableableTimer transferTimer = new DisableableTimer();
+        HashMap<UUID, IncomingTransferState> incomingTransfers = new HashMap<>();
+        HashMap<UUID, OutgoingTransferState> outgoingTransfers = new HashMap<>();
+        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, dataServer, rebroadcastTimer, transferTimer});
         while (true) {
             try {
                 switch (alt.priSelect()) {
@@ -307,6 +338,68 @@ public class CommsManager implements CSProcess {
                         } else if (o instanceof Summary) {
                             Summary rsum = (Summary) o;
                             rsumOut.write(rsum);
+                        } else if (o instanceof DataRequestMessage) {
+                            DataRequestMessage drm = (DataRequestMessage) o;
+                            Data data = ldataClient.call(null);
+                            String mimeType = data.getMime(true);
+                            InputStream is = data.serialize(true);
+
+                            OutgoingTransferState state = new OutgoingTransferState(msg.a.nodeId, mimeType, is);
+                            outgoingTransfers.put(drm.correlationId, state);
+                            transferTimer.set(0);
+                        } else if (o instanceof DataStartMessage) {
+                            DataStartMessage dsm = (DataStartMessage) o;
+                            IncomingTransferState state = incomingTransfers.get(dsm.correlationId);
+                            if (state != null) {
+                                if (state.os != null) {
+                                    dataOwner.errOnce("CommsManager rx duplicate(?) DataStartMessage " + dsm.correlationId);
+                                    //TODO Respond with error?
+                                } else {
+                                    //TODO Make buffer dynamic?
+                                    final PipedInputStream pis = new PipedInputStream(1024*256);
+                                    final PipedOutputStream pos;
+                                    try {
+                                        pos = new PipedOutputStream(pis);
+                                    } catch (IOException ex) {
+                                        // This should never happen
+                                        Logger.getLogger(CommsManager.class.getName()).log(Level.SEVERE, null, ex);
+                                        throw new RuntimeException(ex);
+                                    }
+                                    state.os = pos;
+                                    state.task.responseOut.write(Pair.gen(dsm.mimeType, pis));
+                                }
+                                state.os.write(dsm.data);
+                                if (dsm.eom) {
+                                    state.os.flush();
+                                    state.os.close();
+                                    incomingTransfers.remove(dsm.correlationId);
+                                }
+                                //TODO Clean up after error?
+                                //TODO Verify no malicious packets?
+                            } else {
+                                dataOwner.errOnce("CommsManager rx unsolicited DataStartMessage " + dsm.correlationId);
+                                //TODO Respond with error?
+                            }
+                        } else if (o instanceof DataChunkMessage) {
+                            DataChunkMessage dcm = (DataChunkMessage) o;
+                            IncomingTransferState state = incomingTransfers.get(dcm.correlationId);
+                            if (state != null) {
+                                if (state.os == null) {
+                                    dataOwner.errOnce("CommsManager rx DataChunkMessage before start " + dcm.correlationId);
+                                    //TODO Respond with error?
+                                }
+                                state.os.write(dcm.data);
+                                if (dcm.eom) {
+                                    state.os.flush();
+                                    state.os.close();
+                                    incomingTransfers.remove(dcm.correlationId);
+                                }
+                                //TODO Clean up after error?
+                                //TODO Verify no malicious packets?
+                            } else {
+                                dataOwner.errOnce("CommsManager rx unsolicited DataChunkMessage " + dcm.correlationId);
+                                //TODO Respond with error?
+                            }
                         } else {
                             //dataOwner.errOnce("ERR CommsManager got unhandled msg: " + o);
                             System.err.println("ERR CommsManager got unhandled msg: " + o);
@@ -350,8 +443,16 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
-                    case 8: // rebroadcastTimer
-                    {
+                    case 8: { // dataServer
+                        TaskItem<UUID, Pair<String, InputStream>> task = dataServer.read();
+                        NodeManager.NMInterface nm = nodes.get(task.val);
+                        DataRequestMessage drm = new DataRequestMessage();
+                        byte[] msg = dataOwner.serialize(drm);
+                        nm.txMsgOut.write(msg);
+                        incomingTransfers.put(drm.correlationId, new IncomingTransferState(null, task));
+                        break;
+                    }
+                    case 9: { // rebroadcastTimer
                         //TODO Permit separate intervals for different broadcast mechanisms?
                         rebroadcastInterval = (long) dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L);
                         rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
@@ -362,6 +463,46 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
+                    case 10: { // transferTimer
+                        for (Entry<UUID, OutgoingTransferState> entry : outgoingTransfers.entrySet()) {
+                            UUID correlationId = entry.getKey();
+                            OutgoingTransferState state = entry.getValue();
+                            int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);
+                            byte[] data = new byte[chunkSize];
+                            int count = state.is.read(data);
+                            boolean eom = false;
+                            if (count < 0) {
+                                eom = true;
+                                data = new byte[0];
+                                //TODO It'd be nice if we could set eom on the last chunk to contain data....
+                            } else if (count != chunkSize) {
+                                byte[] newData = new byte[count];
+                                System.arraycopy(data, 0, newData, 0, count);
+                                data = newData;
+                            }
+                            
+                            byte[] msg;
+                            if (state.index == 0) {
+                                DataStartMessage dsm = new DataStartMessage(correlationId, state.mimeType, data, eom);
+                                msg = dataOwner.serialize(dsm);
+                            } else {
+                                DataChunkMessage dcm = new DataChunkMessage(correlationId, state.index, data, eom);
+                                msg = dataOwner.serialize(dcm);
+                            }
+                            NodeManager.NMInterface nm = nodes.get(state.targetId);
+                            if (nm != null) {
+                                nm.txMsgOut.write(msg);
+                            } else {
+                                System.err.println("CM Missing NM?? " + state.targetId);
+                            }
+                            
+                            state.index++;
+                        }
+                        if (outgoingTransfers.isEmpty()) {
+                            transferTimer.turnOff();
+                        }
+                        break;
+                    }
                 }
             } catch (Throwable t) {
                 System.err.println("CommsManager got error; continuing");
@@ -369,4 +510,34 @@ public class CommsManager implements CSProcess {
             }
         }
     }
+    
+    //DO Move to top
+    private static class IncomingTransferState {
+        public OutputStream os;
+        public final TaskItem<UUID, Pair<String, InputStream>> task;
+
+        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
+        //TODO Deal with ACK
+        
+        public IncomingTransferState(OutputStream os, TaskItem<UUID, Pair<String, InputStream>> task) {
+            this.os = os;
+            this.task = task;
+        }
+    }
+
+    private static class OutgoingTransferState {
+        public final UUID targetId;
+        public final String mimeType;
+        public final InputStream is;
+        public int index = 0;
+
+        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
+        //TODO Deal with ACK
+
+        public OutgoingTransferState(UUID targetId, String mimeType, InputStream is) {
+            this.targetId = targetId;
+            this.mimeType = mimeType;
+            this.is = is;
+        }
+    }    
 }

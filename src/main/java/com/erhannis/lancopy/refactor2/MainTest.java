@@ -105,7 +105,7 @@ public class MainTest {
         Advertisement lad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), lComms, true, null);
 
         
-        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn);
+        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null);
         
         new ProcessManager(new Parallel(new CSProcess[]{
             cm,
