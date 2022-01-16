@@ -37,4 +37,9 @@ public class DataChunkMessage extends Message {
         this.data = null;
         this.eom = false;
     }
+
+    @Override
+    public String toString() {
+        return "DCM{"+index+",["+data.length+"],"+eom+"," +super.toString()+"}";
+    }
 }

@@ -48,6 +48,7 @@ import jcsp.helpers.SynchronousSplitter;
 import jcsp.helpers.TCServer.TaskItem;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
+import jcsp.lang.AltingChannelOutput;
 import jcsp.lang.AltingFCServer;
 import jcsp.lang.AltingTCServer;
 import jcsp.lang.Any2OneChannel;
@@ -56,6 +57,7 @@ import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.DisableableTimer;
 import jcsp.lang.Guard;
+import jcsp.lang.One2OneChannelSymmetric;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
@@ -131,9 +133,9 @@ public class CommsManager implements CSProcess {
     
     private NodeManager.NMInterface startNodeManager(UUID id, boolean registerToSplitter) {
         // Blehhhhh, this is boilerplatey
-        Any2OneChannel<byte[]> txMsgChannel = Channel.<byte[]> any2one(new InfiniteBuffer<>());
+        One2OneChannelSymmetric<byte[]> txMsgChannel = Channel.<byte[]> one2oneSymmetric();
         AltingChannelInput<byte[]> txMsgIn = txMsgChannel.in();
-        ChannelOutput<byte[]> txMsgOut = JcspUtils.logDeadlock(txMsgChannel.out());
+        AltingChannelOutput<byte[]> txMsgOut = JcspUtils.logDeadlockAlting(txMsgChannel.out());
         if (registerToSplitter) {
             this.txMsgSplitter.register(txMsgOut);
         }
@@ -321,6 +323,7 @@ public class CommsManager implements CSProcess {
                     case 3: { // internalRxMsgIn
                         Pair<NodeManager.CRToken,byte[]> msg = internalRxMsgIn.read();
                         Object o = dataOwner.deserialize(msg.b);
+                        System.out.println("CM rx " + o);
                         if (o instanceof IdentificationMessage) {
                             IdentificationMessage im = (IdentificationMessage) o;
                             if (!Objects.equals(im.nodeId, msg.a.nodeId)) {
@@ -341,8 +344,8 @@ public class CommsManager implements CSProcess {
                         } else if (o instanceof DataRequestMessage) {
                             DataRequestMessage drm = (DataRequestMessage) o;
                             Data data = ldataClient.call(null);
-                            String mimeType = data.getMime(true);
-                            InputStream is = data.serialize(true);
+                            String mimeType = data.getMime(false);
+                            InputStream is = data.serialize(false);
 
                             OutgoingTransferState state = new OutgoingTransferState(msg.a.nodeId, mimeType, is);
                             outgoingTransfers.put(drm.correlationId, state);
@@ -367,9 +370,11 @@ public class CommsManager implements CSProcess {
                                     }
                                     state.os = pos;
                                     state.task.responseOut.write(Pair.gen(dsm.mimeType, pis));
+                                    transferTimer.sleep(1000);
                                 }
                                 state.os.write(dsm.data);
                                 if (dsm.eom) {
+                                    System.out.println("CM close os " + dsm.correlationId);
                                     state.os.flush();
                                     state.os.close();
                                     incomingTransfers.remove(dsm.correlationId);
@@ -390,6 +395,7 @@ public class CommsManager implements CSProcess {
                                 }
                                 state.os.write(dcm.data);
                                 if (dcm.eom) {
+                                    System.out.println("CM close os " + dcm.correlationId);
                                     state.os.flush();
                                     state.os.close();
                                     incomingTransfers.remove(dcm.correlationId);
@@ -464,9 +470,23 @@ public class CommsManager implements CSProcess {
                         break;
                     }
                     case 10: { // transferTimer
-                        for (Entry<UUID, OutgoingTransferState> entry : outgoingTransfers.entrySet()) {
+                        boolean somethingSent = false;
+                        for (Iterator<Entry<UUID, OutgoingTransferState>> iter = outgoingTransfers.entrySet().iterator(); iter.hasNext();) {
+                            Entry<UUID, OutgoingTransferState> entry = iter.next();
                             UUID correlationId = entry.getKey();
                             OutgoingTransferState state = entry.getValue();
+                            NodeManager.NMInterface nm = nodes.get(state.targetId);
+                            if (nm == null) {
+                                System.err.println("CM Missing NM?? " + state.targetId);
+                                continue;
+                            } else {
+                                if (!nm.txMsgOut.pending()) {
+                                    System.out.println("CM channel not ready to rx; skipping...");
+                                    continue;
+                                }
+                                //TODO We are now committed to send something to txMsgOut - can error occur inbetween?
+                            }                            
+                            
                             int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);
                             byte[] data = new byte[chunkSize];
                             int count = state.is.read(data);
@@ -484,19 +504,27 @@ public class CommsManager implements CSProcess {
                             byte[] msg;
                             if (state.index == 0) {
                                 DataStartMessage dsm = new DataStartMessage(correlationId, state.mimeType, data, eom);
+                                System.out.println("CM tx " + dsm);
                                 msg = dataOwner.serialize(dsm);
                             } else {
                                 DataChunkMessage dcm = new DataChunkMessage(correlationId, state.index, data, eom);
+                                System.out.println("CM tx " + dcm);
                                 msg = dataOwner.serialize(dcm);
                             }
-                            NodeManager.NMInterface nm = nodes.get(state.targetId);
-                            if (nm != null) {
-                                nm.txMsgOut.write(msg);
-                            } else {
-                                System.err.println("CM Missing NM?? " + state.targetId);
+                            nm.txMsgOut.write(msg);
+                            somethingSent = true;
+
+                            if (eom) {
+                                iter.remove();
+                                System.out.println("CM finished tx " + entry.getKey());
                             }
                             
                             state.index++;
+                        }
+                        if (!somethingSent) {
+                            System.out.println("CM nothing ready to tx, delaying...");
+                            //TODO Optionize?
+                            transferTimer.setAlarm(transferTimer.read() + 100);
                         }
                         if (outgoingTransfers.isEmpty()) {
                             transferTimer.turnOff();

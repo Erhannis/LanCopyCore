@@ -22,4 +22,9 @@ public class IdentificationMessage extends Message {
     private IdentificationMessage() {
         this.nodeId = null;
     }
+
+    @Override
+    public String toString() {
+        return "IM{"+super.toString()+"}";
+    }
 }

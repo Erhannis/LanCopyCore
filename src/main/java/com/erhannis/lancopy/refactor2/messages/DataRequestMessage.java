@@ -9,4 +9,8 @@ package com.erhannis.lancopy.refactor2.messages;
  * @author erhannis
  */
 public class DataRequestMessage extends Message {
+    @Override
+    public String toString() {
+        return "DRM{"+super.toString()+"}";
+    }
 }

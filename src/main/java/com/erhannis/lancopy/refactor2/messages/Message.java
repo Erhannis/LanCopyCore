@@ -21,4 +21,9 @@ public abstract class Message {
     public Message(UUID correlationId) {
         this.correlationId = correlationId;
     }
+
+    @Override
+    public String toString() {
+        return "Msg{"+correlationId+"}";
+    }
 }
