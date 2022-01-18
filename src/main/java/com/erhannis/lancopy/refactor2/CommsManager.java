@@ -34,6 +34,7 @@ import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
 import java.util.ArrayList;
+import java.util.Arrays;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -257,15 +258,8 @@ public class CommsManager implements CSProcess {
         startNodeManager(null, false);
         
         //TODO Add verification to make sure nodes' claims match their TLS credentials
-        //DO Read Identification message first off, transfer channel
-        //DO Check TODO table for messages to send when
-        //DO Double check case/breaks
         //DO Add manual URLs
-        //DO Do call channels
 
-        //DO Find deadlock cycles
-        //DO Make sure logdeadlock
-        
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
         long rebroadcastInterval = (long) dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L);
@@ -318,6 +312,10 @@ public class CommsManager implements CSProcess {
                                 startNodeManager(id, true);
                             }
                             nodes.get(id).subscribeOut.write(separated.get(id));
+                            // This might only be necessary on startNodeManager, but for robustness it shouldn't hurt to leave it here
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(aadClient.call(dataOwner.ID)));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(summaryClient.call(dataOwner.ID)));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(rosterClient.call(null)));
                         }
                         break;
                     }
@@ -422,6 +420,10 @@ public class CommsManager implements CSProcess {
                             startNodeManager(id, true);
                         }
                         nodes.get(id).channelReaderShuffleBOut.write(cr);
+                        // This might only be necessary on startNodeManager, but for robustness it shouldn't hurt to leave it here
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(aadClient.call(dataOwner.ID)));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(summaryClient.call(dataOwner.ID)));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(rosterClient.call(null)));
                         break;
                     }
                     case 5: { // internalCommStatusIn
