@@ -20,6 +20,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.BackpressureRegulator;
 import jcsp.helpers.JcspUtils;
 import jcsp.helpers.JcspUtils.DeadlockLoggingChannelOutput;
 import jcsp.lang.Alternative;
@@ -39,7 +40,7 @@ import jcsp.lang.ProcessManager;
  */
 public class NodeManager implements CSProcess {
     public static class NMInterface {
-        public final AltingChannelOutput<byte[]> txMsgOut; // Alting so we can pause flow according to throughput
+        public final BackpressureRegulator<byte[]> txMsgOut;
         public final AltingChannelInput<Pair<NodeManager.CRToken,byte[]>> rxMsgIn;
         public final ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut;
         public final AltingChannelInput<ChannelReader> channelReaderShuffleAIn;
@@ -48,7 +49,7 @@ public class NodeManager implements CSProcess {
         public final ChannelOutput<List<Comm>> subscribeOut;
         public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
 
-        public NMInterface(AltingChannelOutput<byte[]> txMsgOut, AltingChannelInput<Pair<NodeManager.CRToken, byte[]>> rxMsgIn, ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut, AltingChannelInput<ChannelReader> channelReaderShuffleAIn, ChannelOutput<ChannelReader> channelReaderShuffleBOut, ChannelOutput<CommChannel> incomingConnectionOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn) {
+        public NMInterface(BackpressureRegulator<byte[]> txMsgOut, AltingChannelInput<Pair<NodeManager.CRToken, byte[]>> rxMsgIn, ChannelOutput<NodeManager.CRToken> demandShuffleChannelOut, AltingChannelInput<ChannelReader> channelReaderShuffleAIn, ChannelOutput<ChannelReader> channelReaderShuffleBOut, ChannelOutput<CommChannel> incomingConnectionOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn) {
             this.txMsgOut = txMsgOut;
             this.rxMsgIn = rxMsgIn;
             this.demandShuffleChannelOut = demandShuffleChannelOut;

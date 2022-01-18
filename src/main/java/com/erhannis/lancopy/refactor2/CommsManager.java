@@ -42,6 +42,7 @@ import java.util.Objects;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.BackpressureRegulator;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
 import jcsp.helpers.SynchronousSplitter;
@@ -60,6 +61,8 @@ import jcsp.lang.Guard;
 import jcsp.lang.One2OneChannelSymmetric;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
+import jcsp.util.Buffer;
+import jcsp.util.ChannelDataStore;
 import jcsp.util.InfiniteBuffer;
 
 /**
@@ -133,9 +136,7 @@ public class CommsManager implements CSProcess {
     
     private NodeManager.NMInterface startNodeManager(UUID id, boolean registerToSplitter) {
         // Blehhhhh, this is boilerplatey
-        One2OneChannelSymmetric<byte[]> txMsgChannel = Channel.<byte[]> one2oneSymmetric();
-        AltingChannelInput<byte[]> txMsgIn = txMsgChannel.in();
-        AltingChannelOutput<byte[]> txMsgOut = JcspUtils.logDeadlockAlting(txMsgChannel.out());
+        BackpressureRegulator<byte[]> txMsgOut = new BackpressureRegulator<>();
         if (registerToSplitter) {
             this.txMsgSplitter.register(txMsgOut);
         }
@@ -159,7 +160,7 @@ public class CommsManager implements CSProcess {
         ChannelOutput<List<Comm>> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
         
         
-        new ProcessManager(new NodeManager(dataOwner, id, txMsgIn, internalRxMsgOut, demandShuffleChannelIn, internalChannelReaderShuffleAOut, channelReaderShuffleBIn, incomingConnectionIn, subscribeIn, internalCommStatusOut)).start();
+        new ProcessManager(new NodeManager(dataOwner, id, txMsgOut.in, internalRxMsgOut, demandShuffleChannelIn, internalChannelReaderShuffleAOut, channelReaderShuffleBIn, incomingConnectionIn, subscribeIn, internalCommStatusOut)).start();
         NodeManager.NMInterface nmi = new NodeManager.NMInterface(txMsgOut, internalRxMsgIn, demandShuffleChannelOut, internalChannelReaderShuffleAIn, channelReaderShuffleBOut, incomingConnectionOut, subscribeOut, internalCommStatusIn);
         nodes.put(id, nmi);
         return nmi;
@@ -480,11 +481,10 @@ public class CommsManager implements CSProcess {
                                 System.err.println("CM Missing NM?? " + state.targetId);
                                 continue;
                             } else {
-                                if (!nm.txMsgOut.pending()) {
+                                if (!nm.txMsgOut.shouldWrite()) {
                                     System.out.println("CM channel not ready to rx; skipping...");
                                     continue;
                                 }
-                                //TODO We are now committed to send something to txMsgOut - can error occur inbetween?
                             }                            
                             
                             int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);
