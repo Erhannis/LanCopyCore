@@ -8,6 +8,7 @@ import java.math.BigInteger;
 import java.net.Socket;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
 import java.security.Key;
 import java.security.KeyPair;
@@ -67,8 +68,7 @@ public class ContextFactory {
         // Keystore
         KeyStore ks = KeyStore.getInstance("PKCS12");
         File ksFile =  new File(keystore);
-        Path ksPath = ksFile.toPath();
-        if (!Files.exists(ksPath)) {
+        if (!ksFile.exists()) {
             System.out.println("Generating key...");
             KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
             kpg.initialize(4096);
@@ -89,8 +89,7 @@ public class ContextFactory {
         // Truststore
         KeyStore ts = KeyStore.getInstance("PKCS12");
         File tsFile =  new File(truststore);
-        Path tsPath = tsFile.toPath();
-        if (!Files.exists(tsPath)) {
+        if (!tsFile.exists()) {
             System.out.println("Generating initial truststore...");
             KeyPairGenerator kpg = KeyPairGenerator.getInstance("RSA");
             kpg.initialize(4096);
@@ -108,7 +107,7 @@ public class ContextFactory {
             fos.close();
         }
         
-        try (InputStream keystoreFile = Files.newInputStream(new File(keystore).toPath()) ; InputStream truststoreFile = Files.newInputStream(tsPath)) {
+        try (InputStream keystoreFile = Files.newInputStream(ksFile.toPath()) ; InputStream truststoreFile = Files.newInputStream(tsFile.toPath())) {
             // (Re)load ks/ts
             ks.load(keystoreFile, "password".toCharArray());
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
