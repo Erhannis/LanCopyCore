@@ -24,7 +24,10 @@ import java.security.cert.CertificateException;
 import java.security.cert.X509Certificate;
 import java.util.Arrays;
 import java.util.Date;
+import java.util.HashMap;
 import java.util.UUID;
+import java.util.concurrent.ConcurrentHashMap;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.net.ssl.KeyManager;
@@ -54,7 +57,7 @@ public class ContextFactory {
     }
     
 
-    public static Context authenticatedContext(String protocol, String keystore, String truststore) throws GeneralSecurityException, IOException {
+    public static Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback) throws GeneralSecurityException, IOException {
         //TODO Optionize some of these things?  Passwords, 
         
         Context ctx = new Context();
@@ -127,6 +130,8 @@ public class ContextFactory {
 
             ctx.sha256Fingerprint = DigestUtils.sha256Hex(ks.getCertificate("node").getEncoded());
             
+            HashMap<String, Boolean> trustCache = new HashMap<>();
+            
             X509TrustManager tm = new FallbackX509TrustManager(tmf) {
                 @Override
                 public void failedClientTrusted(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
@@ -141,51 +146,56 @@ public class ContextFactory {
                 }                
 
                 private void handleCertFailure(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
-                    //DO Deal with multiple simultaneous attempts on the same cert
-                    Throwable cause = e.getCause();
-                    boolean askAccept = false;
-                    if (cause instanceof sun.security.provider.certpath.SunCertPathBuilderException) {
-                        System.out.println("This certificate id has not been recorded.");
-                        System.out.println(DigestUtils.sha256Hex(chain[0].getEncoded()));
-                        System.out.println("Trust it and record it? (y/N)");
-                        askAccept = true;
-                    } else if (CertPathValidatorException.BasicReason.INVALID_SIGNATURE == (((java.security.cert.CertPathValidatorException)cause).getReason())) {
-                        //TODO Is this the only reason/exception we care about?
-                        System.out.println("THIS CERTIFICATE IS DIFFERENT FROM THE ONE ON RECORD.");
-                        System.out.println(DigestUtils.sha256Hex(chain[0].getEncoded()));
-                        System.out.println("Trust it and overwrite the old one? (y/N)");
-                        askAccept = true;
-                    } else {
-                        throw e;
-                    }
-                    if (askAccept) {
-                        int response = 'n';
-                        try {
-                            response = System.in.read();
-                            System.err.println("//TODO Integrate into the UI");
-                        } catch (IOException ex) {
-                            Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
+                    synchronized (trustCache) {
+                        Throwable cause = e.getCause();
+                        String fingerprint = DigestUtils.sha256Hex(chain[0].getEncoded());
+                        if (trustCache.containsKey(fingerprint)) {
+                            if (trustCache.get(fingerprint)) {
+                                return;
+                            } else {
+                                throw e;
+                            }
                         }
-                        if (response == 'y') {
-                            System.out.println("accepted");
-                            try {
-                                ts.setCertificateEntry(chain[0].getSubjectX500Principal().getName(), chain[0]);
-                                try (FileOutputStream fos = new FileOutputStream(truststore)) {
-                                    ts.store(fos, "password".toCharArray());
-                                    fos.flush();
-                                    fos.close();
-                                    System.out.println("stored");
-                                } catch (NoSuchAlgorithmException ex) {
-                                    Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
-                                } catch (IOException ex) {
+                        boolean askAccept = false;
+                        StringBuilder sb = new StringBuilder();
+                        if (cause instanceof sun.security.provider.certpath.SunCertPathBuilderException) {
+                            sb.append("This certificate id has not been recorded.\n");
+                            sb.append(fingerprint+"\n");
+                            sb.append("Trust it and record it?");
+                            askAccept = true;
+                        } else if (CertPathValidatorException.BasicReason.INVALID_SIGNATURE == (((java.security.cert.CertPathValidatorException)cause).getReason())) {
+                            //TODO Is this the only reason/exception we care about?
+                            sb.append("THIS CERTIFICATE IS DIFFERENT FROM THE ONE ON RECORD.\n");
+                            sb.append(fingerprint+"\n");
+                            sb.append("Trust it and overwrite the old one?");
+                            askAccept = true;
+                        } else {
+                            throw e;
+                        }
+                        if (askAccept) {
+                            if (trustCallback.apply(sb.toString())) {
+                                System.out.println("accepted");
+                                trustCache.put(fingerprint, true);
+                                try {
+                                    ts.setCertificateEntry(chain[0].getSubjectX500Principal().getName(), chain[0]);
+                                    try (FileOutputStream fos = new FileOutputStream(truststore)) {
+                                        ts.store(fos, "password".toCharArray());
+                                        fos.flush();
+                                        fos.close();
+                                        System.out.println("stored");
+                                    } catch (NoSuchAlgorithmException ex) {
+                                        Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
+                                    } catch (IOException ex) {
+                                        Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
+                                    }
+                                } catch (KeyStoreException ex) {
                                     Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
                                 }
-                            } catch (KeyStoreException ex) {
-                                Logger.getLogger(ContextFactory.class.getName()).log(Level.SEVERE, null, ex);
+                            } else {
+                                System.out.println("rejected");
+                                trustCache.put(fingerprint, false);
+                                throw e;
                             }
-                        } else {
-                            System.out.println("rejected");
-                            throw e;
                         }
                     }
                 }

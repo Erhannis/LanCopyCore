@@ -103,7 +103,7 @@ public class MainTest {
             i = j;
             j = k;
         }
-        DataOwner dataOwner = new DataOwner("options" + i + ".dat");
+        DataOwner dataOwner = new DataOwner("options" + i + ".dat", (msg) -> true);
         dataOwner.options.set("Security.KEYSTORE_PATH", "lancopy" + i + ".ks");
         dataOwner.options.set("Security.TRUSTSTORE_PATH", "lancopy" + i + ".ts");
         dataOwner.options.set("Security.ENCRYPTION", true);

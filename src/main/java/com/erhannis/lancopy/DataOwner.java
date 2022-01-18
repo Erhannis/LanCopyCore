@@ -41,6 +41,7 @@ import java.util.HashSet;
 import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
@@ -88,11 +89,11 @@ public class DataOwner {
     public final boolean encrypted;
     public final ContextFactory.Context tlsContext;
 
-    public DataOwner() {
-        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME);
+    public DataOwner(Function<String, Boolean> trustCallback) {
+        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME, trustCallback);
     }
 
-    public DataOwner(String optionsPath) {
+    public DataOwner(String optionsPath, Function<String, Boolean> trustCallback) {
         this.options = Options.demandOptions(optionsPath);
         this.ohClient = new OkHttpClient.Builder()
                 .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
@@ -106,7 +107,7 @@ public class DataOwner {
             
             ContextFactory.Context ctx = null;
             try {
-                ctx = ContextFactory.authenticatedContext("TLSv1.3", keystorePath, truststorePath);
+                ctx = ContextFactory.authenticatedContext("TLSv1.3", keystorePath, truststorePath, trustCallback);
             } catch (GeneralSecurityException ex) {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             } catch (IOException ex) {

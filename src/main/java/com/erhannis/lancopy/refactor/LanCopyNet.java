@@ -18,6 +18,7 @@ import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
+import java.util.function.Function;
 import jcsp.helpers.CacheProcess;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
@@ -41,8 +42,8 @@ import jcsp.util.InfiniteBuffer;
  * @author erhannis
  */
 public class LanCopyNet {
-    public static UiInterface startNet() throws InterruptedException, IOException {
-        DataOwner dataOwner = new DataOwner();
+    public static UiInterface startNet(Function<String, Boolean> trustCallback) throws InterruptedException, IOException {
+        DataOwner dataOwner = new DataOwner(trustCallback);
         
         Any2OneChannel<Advertisement> rxAdChannel = Channel.<Advertisement>any2one(new InfiniteBuffer<>());
         AltingChannelInput<Advertisement> rxAdIn = rxAdChannel.in();
