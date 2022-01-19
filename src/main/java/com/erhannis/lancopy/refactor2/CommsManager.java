@@ -405,6 +405,16 @@ public class CommsManager implements CSProcess {
                                 dataOwner.errOnce("CommsManager rx unsolicited DataChunkMessage " + dcm.correlationId);
                                 //TODO Respond with error?
                             }
+                        } else if (o instanceof List) {
+                            if (o instanceof List) {
+                                List l = (List) o;
+                                for (Object a : l) {
+                                    if (!(a instanceof Advertisement)) {
+                                        throw new IllegalArgumentException("CWS rx list not of Advertisement");
+                                    }
+                                    radOut.write((Advertisement)a);
+                                }
+                            }
                         } else {
                             //dataOwner.errOnce("ERR CommsManager got unhandled msg: " + o);
                             System.err.println("ERR CommsManager got unhandled msg: " + o);
