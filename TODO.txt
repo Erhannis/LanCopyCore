@@ -184,6 +184,7 @@ Augh, wait, how to decide which NodeManager gets an incoming connection?
 
 TODO
   show NM backpressure on ui?
+  show component health - CM, NM, Comms
 
 DO
   hook up connection timeouts

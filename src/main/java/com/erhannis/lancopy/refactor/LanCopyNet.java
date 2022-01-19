@@ -8,18 +8,14 @@ package com.erhannis.lancopy.refactor;
 import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.TextData;
-import com.erhannis.lancopy.refactor.tcp.TcpGetComm;
-import com.erhannis.lancopy.refactor.tcp.TcpPutComm;
 import com.erhannis.lancopy.refactor2.CommsManager;
 import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
 import java.io.InputStream;
-import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
-import jcsp.helpers.CacheProcess;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
 import jcsp.helpers.SynchronousSplitter;
@@ -69,10 +65,7 @@ public class LanCopyNet {
         AltingChannelInput<List<Comm>> lcommsIn = lcommsChannel.in();
         ChannelOutput<List<Comm>> lcommsOut = JcspUtils.logDeadlock(lcommsChannel.out());
 
-        Any2OneChannel<Collection<Comm>> pokeChannel = Channel.<Collection<Comm>> any2one(new InfiniteBuffer<>());
-        AltingChannelInput<Collection<Comm>> pokeIn = pokeChannel.in();
-        ChannelOutput<Collection<Comm>> pokeOut = JcspUtils.logDeadlock(pokeChannel.out());
-
+        //DO Deal with this
         Any2OneChannel<String> getRosterChannel = Channel.<String> any2one(new InfiniteBuffer<>());
         AltingChannelInput<String> getRosterIn = getRosterChannel.in();
         ChannelOutput<String> getRosterOut = JcspUtils.logDeadlock(getRosterChannel.out());
@@ -90,12 +83,6 @@ public class LanCopyNet {
         
         //TODO Maybe put the summary Call in the NodeTracker
         
-        //TODO Should I just use the same port across all of them?
-        int ipv4port = (int) dataOwner.options.getOrDefault("Multicast.ipv4.port", 12113);
-        String ipv4address = (String) dataOwner.options.getOrDefault("Multicast.ipv4.address", "234.119.187.64");
-        int ipv6port = (int) dataOwner.options.getOrDefault("Multicast.ipv6.port", 12114);
-        String ipv6address = (String) dataOwner.options.getOrDefault("Multicast.ipv6.address", "[ff05:acbc:d10a:5fa4:9dac:4ff5:3dbe:aacc]"); //TODO Figure out port
-        int broadcastPort = (int) dataOwner.options.getOrDefault("Broadcast.port", 12115);
         //TODO Allow specified broadcast addresses?
         
         new ProcessManager(new Parallel(new CSProcess[]{
@@ -103,12 +90,10 @@ public class LanCopyNet {
             summaryUpdatedSplitter,
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
-//            new TcpGetComm(dataOwner, subscribeIn, pokeIn, getRosterIn, summaryToTrackerOut, rxAdOut, dataCall.getServer(), adCall.getClient(), commStatusOut),
-//            new TcpPutComm(dataOwner, commsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), localDataCall.getClient(), summaryCall.getClient(), rosterCall.getClient()),
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
             new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer())
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, pokeOut, getRosterOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, getRosterOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }
 
     public static class UiInterface {
@@ -118,20 +103,18 @@ public class LanCopyNet {
         public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
-        public final ChannelOutput<Collection<Comm>> pokeOut;
         public final ChannelOutput<String> getRosterOut;
         public final FCClient<UUID, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<Collection<Comm>> pokeOut, ChannelOutput<String> getRosterOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<String> getRosterOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
             this.commStatusIn = commStatusIn;
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
-            this.pokeOut = pokeOut;
             this.getRosterOut = getRosterOut;
             this.dataCall = dataCall;
             this.rosterCall = rosterCall;

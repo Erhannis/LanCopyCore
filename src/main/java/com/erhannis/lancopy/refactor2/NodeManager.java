@@ -42,6 +42,7 @@ import jcsp.lang.JoinFork;
 import jcsp.lang.Parallel;
 import jcsp.lang.PoisonException;
 import jcsp.lang.ProcessManager;
+import jcsp.lang.Sequence;
 import jcsp.util.InfiniteBuffer;
 import jcsp.util.ints.InfiniteBufferInt;
 
@@ -272,7 +273,7 @@ public class NodeManager implements CSProcess {
                     }
                     case 2: { // subscribeIn
                         List<Comm> comms = subscribeIn.read();
-                        //DO Optionally parallel
+
                         final int count = comms.size();
                         Any2OneChannelInt successChannel = Channel.any2oneInt(new InfiniteBufferInt());
                         AltingChannelInputInt successIn = successChannel.in();
@@ -336,7 +337,13 @@ public class NodeManager implements CSProcess {
                             });
                         }
                         
-                        new ProcessManager(new Parallel(processes.toArray(new CSProcess[0]))).start();
+                        boolean parallel = (Boolean) dataOwner.options.getOrDefault("NodeManager.PARALLEL_CONNECTION_ATTEMPTS", true);
+
+                        if (parallel) {
+                            new ProcessManager(new Parallel(processes.toArray(new CSProcess[0]))).start();
+                        } else {
+                            new ProcessManager(new Sequence(processes.toArray(new CSProcess[0]))).start();
+                        }
                         
                         int remaining = count;
                         Alternative waitingAlt = new Alternative(new Guard[]{successIn, internalJF});

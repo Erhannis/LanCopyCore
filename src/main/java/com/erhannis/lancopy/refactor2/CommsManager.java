@@ -72,6 +72,35 @@ import jcsp.util.InfiniteBuffer;
  */
 public class CommsManager implements CSProcess {
 
+    private static class IncomingTransferState {
+        public OutputStream os;
+        public final TaskItem<UUID, Pair<String, InputStream>> task;
+
+        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
+        //TODO Deal with ACK
+        
+        public IncomingTransferState(OutputStream os, TaskItem<UUID, Pair<String, InputStream>> task) {
+            this.os = os;
+            this.task = task;
+        }
+    }
+
+    private static class OutgoingTransferState {
+        public final UUID targetId;
+        public final String mimeType;
+        public final InputStream is;
+        public int index = 0;
+
+        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
+        //TODO Deal with ACK
+
+        public OutgoingTransferState(UUID targetId, String mimeType, InputStream is) {
+            this.targetId = targetId;
+            this.mimeType = mimeType;
+            this.is = is;
+        }
+    }    
+    
     public static class CommsToken {
         // ???
     }
@@ -111,7 +140,7 @@ public class CommsManager implements CSProcess {
         this.txMsgSplitter = new SynchronousSplitter<byte[]>();
     }
 
-    private final ChannelOutput<List<Comm>> lcommsOut;
+    private final ChannelOutput<List<Comm>> lcommsOut; //TODO Support changes?  Removals?
     private final ChannelOutput<Advertisement> radOut;
     private final AltingChannelInput<Advertisement> aadIn;
     private final ChannelOutput<Summary> rsumOut;
@@ -210,6 +239,7 @@ public class CommsManager implements CSProcess {
                     int port = (int) dataOwner.options.getOrDefault("Comms.tcp.server_port", 0);
                     try {
                         TcpCommChannel.ServerThread st = TcpCommChannel.serverThread(internalCommChannelOut, port);
+                        System.out.println("CommsManager.TCP " + dataOwner.ID + " bound to port " + port);
 
                         // Determine Comms
                         //TODO Allow whitelist/blacklist interfaces
@@ -258,7 +288,11 @@ public class CommsManager implements CSProcess {
         startNodeManager(null, false);
         
         //TODO Add verification to make sure nodes' claims match their TLS credentials
-        //DO Add manual URLs
+        //DO Add manual data URLs
+        //DO Allow manual connections
+        //DO Allow unidirectional comms?
+        //DO Size limits
+        //DO Proactively show local fingerprint
 
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
@@ -287,15 +321,12 @@ public class CommsManager implements CSProcess {
                         }
 
                         // Tx Ad to connected nodes
-                        //DO Skip null keys?
                         this.txMsgSplitter.write(msg);
                         break;
                     }
                     case 1: { // lsumIn
-                        //DO Cache, and autosend to new connections?
                         Summary summary = lsumIn.read();
                         byte[] msg = dataOwner.serialize(summary);
-                        //DO Skip null keys?
                         this.txMsgSplitter.write(msg);
                         break;
                     }
@@ -329,17 +360,26 @@ public class CommsManager implements CSProcess {
                                 UUID fromId = msg.a.nodeId;
                                 // Wrong NodeManager; shuffle to correct
                                 msg.a.nodeId = im.nodeId;
-//                                if (!nodes.containsKey(msg.a.nodeId)) {
-//                                    startNodeManager(msg.a.nodeId, true);
-//                                }
                                 nodes.get(fromId).demandShuffleChannelOut.write(msg.a);
                             }
                         } else if (o instanceof Advertisement) {
-                            Advertisement ad = (Advertisement) o;
-                            radOut.write(ad);
+                            int maxAdSize = (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000);
+                            if (msg.b.length > maxAdSize) {
+                                System.err.println("CM rx ad too big: " + msg.b.length + " > " + maxAdSize);
+                                //TODO Respond with error?
+                            } else {
+                                Advertisement ad = (Advertisement) o;
+                                radOut.write(ad);
+                            }
                         } else if (o instanceof Summary) {
-                            Summary rsum = (Summary) o;
-                            rsumOut.write(rsum);
+                            int maxSummarySize = (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_SUMMARY_SIZE", 1000);
+                            if (msg.b.length > maxSummarySize) {
+                                System.err.println("CM rx summary too big: " + msg.b.length + " > " + maxSummarySize);
+                                //TODO Respond with error?
+                            } else {
+                                Summary rsum = (Summary) o;
+                                rsumOut.write(rsum);
+                            }
                         } else if (o instanceof DataRequestMessage) {
                             DataRequestMessage drm = (DataRequestMessage) o;
                             Data data = ldataClient.call(null);
@@ -350,6 +390,7 @@ public class CommsManager implements CSProcess {
                             outgoingTransfers.put(drm.correlationId, state);
                             transferTimer.set(0);
                         } else if (o instanceof DataStartMessage) {
+                            //TODO The data messages have byte[], which could be made huge; a DoS attack.  Consider.
                             DataStartMessage dsm = (DataStartMessage) o;
                             IncomingTransferState state = incomingTransfers.get(dsm.correlationId);
                             if (state != null) {
@@ -381,7 +422,7 @@ public class CommsManager implements CSProcess {
                                 //TODO Clean up after error?
                                 //TODO Verify no malicious packets?
                             } else {
-                                dataOwner.errOnce("CommsManager rx unsolicited DataStartMessage " + dsm.correlationId);
+                                System.err.println("CommsManager rx unsolicited DataStartMessage " + dsm.correlationId);
                                 //TODO Respond with error?
                             }
                         } else if (o instanceof DataChunkMessage) {
@@ -408,6 +449,14 @@ public class CommsManager implements CSProcess {
                         } else if (o instanceof List) {
                             if (o instanceof List) {
                                 List l = (List) o;
+                                
+                                int maxAdSize = (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000);
+                                if (msg.b.length > (maxAdSize * l.size())) { // Not exactly correct, but probably close enough...?
+                                    System.err.println("CM rx ad too big: " + msg.b.length + " > " + maxAdSize);
+                                    //TODO Respond with error?
+                                }
+                                //TODO Except they COULD send like 1000 ads, I guess.  Blah, I dunno
+                                
                                 for (Object a : l) {
                                     if (!(a instanceof Advertisement)) {
                                         throw new IllegalArgumentException("CWS rx list not of Advertisement");
@@ -419,8 +468,6 @@ public class CommsManager implements CSProcess {
                             //dataOwner.errOnce("ERR CommsManager got unhandled msg: " + o);
                             System.err.println("ERR CommsManager got unhandled msg: " + o);
                         }
-                        //DO ;
-                        // Request data: get data, add to list, set timer to 0 while list, on timer write chunks
                         break;
                     }
                     case 4: { // internalChannelReaderShuffleAIn
@@ -457,7 +504,6 @@ public class CommsManager implements CSProcess {
                             Advertisement ad = (Advertisement) o;
                             radOut.write(ad);
                         } else {
-                            //dataOwner.errOnce("ERR CommsManager got unhandled broadcast msg: " + o);
                             System.err.println("ERR CommsManager got unhandled broadcast msg: " + o);
                         }
                         break;
@@ -550,34 +596,4 @@ public class CommsManager implements CSProcess {
             }
         }
     }
-    
-    //DO Move to top
-    private static class IncomingTransferState {
-        public OutputStream os;
-        public final TaskItem<UUID, Pair<String, InputStream>> task;
-
-        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
-        //TODO Deal with ACK
-        
-        public IncomingTransferState(OutputStream os, TaskItem<UUID, Pair<String, InputStream>> task) {
-            this.os = os;
-            this.task = task;
-        }
-    }
-
-    private static class OutgoingTransferState {
-        public final UUID targetId;
-        public final String mimeType;
-        public final InputStream is;
-        public int index = 0;
-
-        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
-        //TODO Deal with ACK
-
-        public OutgoingTransferState(UUID targetId, String mimeType, InputStream is) {
-            this.targetId = targetId;
-            this.mimeType = mimeType;
-            this.is = is;
-        }
-    }    
 }
