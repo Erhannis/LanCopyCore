@@ -5,6 +5,7 @@
 package com.erhannis.lancopy.refactor2.tcp;
 
 import com.erhannis.lancopy.refactor2.BroadcastReceiver;
+import com.erhannis.mathnstuff.MeUtils;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.InetAddress;
@@ -75,8 +76,8 @@ public class TcpMulticastBroadcastReceiver extends BroadcastReceiver {
                 try {
                     DatagramPacket packet = new DatagramPacket(buf, buf.length);
                     socket.receive(packet);
-                    //String received = new String(packet.getData(), 0, packet.getLength());
-                    //System.out.println("MA rx " + received);
+                    String received = MeUtils.cleanTextContent(new String(packet.getData(), 0, packet.getLength()), "�");
+                    System.out.println("TcpMBR rx " + received);
                     msgOut.write(copyData(packet));
                 } catch (SocketException | PoisonException ex) {
                     System.out.println("<<TcpMulticastBroadcastReceiver");

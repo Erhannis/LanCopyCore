@@ -5,6 +5,7 @@
 package com.erhannis.lancopy.refactor2.tcp;
 
 import com.erhannis.lancopy.refactor2.BroadcastTransmitter;
+import com.erhannis.mathnstuff.MeUtils;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -105,6 +106,8 @@ public class TcpBroadcastBroadcastTransmitter extends BroadcastTransmitter {
         while (true) {
             try {
                 byte[] msg = txMsgIn.read();
+                String transmitted = MeUtils.cleanTextContent(new String(msg), "�");
+                System.out.println("TcpBBT tx " + transmitted);
                 DatagramPacket packet = new DatagramPacket(msg, msg.length, group, port);
                 socket.send(packet);
             } catch (IOException ex) {

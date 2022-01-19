@@ -5,6 +5,7 @@
 package com.erhannis.lancopy.refactor2;
 
 import com.erhannis.lancopy.DataOwner;
+import com.erhannis.lancopy.JmDNSProcess;
 import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
@@ -270,6 +271,10 @@ public class CommsManager implements CSProcess {
                         }
                         //TODO Note that this is running separately from the CM, and so defies convention a little
                         lcommsOut.write(newComms); //TODO Note that these stack on top of whatever Comms are already in the Ad
+                        
+                        //TODO Likewise
+                        // Also, this is weirdly unrelated to the other stuff in this block
+                        JmDNSProcess.start(dataOwner, st.boundPort, radOut);
                         
                         while (true) {
                             try {

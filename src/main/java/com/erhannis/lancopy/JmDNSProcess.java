@@ -10,125 +10,128 @@ import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.ErrorData;
 import com.erhannis.lancopy.data.FilesData;
 import com.erhannis.lancopy.data.TextData;
+import com.erhannis.lancopy.refactor.Advertisement;
+import com.erhannis.lancopy.refactor.Comm;
+import com.erhannis.lancopy.refactor.tcp.TcpComm;
+import com.google.common.collect.Lists;
 import java.io.File;
 import java.io.IOException;
 import java.net.InetAddress;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Objects;
+import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.JmDNS;
 import javax.jmdns.ServiceEvent;
 import javax.jmdns.ServiceListener;
-import javax.swing.JFileChooser;
-import okhttp3.OkHttpClient;
-import okhttp3.Request;
-import okhttp3.Response;
+import jcsp.lang.ChannelOutput;
 import xyz.gianlu.zeroconf.Service;
 import xyz.gianlu.zeroconf.Zeroconf;
 
 public class JmDNSProcess {
-  private static class LCListener implements ServiceListener {
+
+    private static class LCListener implements ServiceListener {
+
+        private final DataOwner dataOwner;
+        private final ChannelOutput<Advertisement> radOut;
+
+        public LCListener(DataOwner dataOwner, ChannelOutput<Advertisement> radOut) {
+            this.dataOwner = dataOwner;
+            this.radOut = radOut;
+        }
+
+        @Override
+        public void serviceAdded(ServiceEvent event) {
+            System.out.println("Service added: " + event.getInfo());
+        }
+
+        @Override
+        public void serviceRemoved(ServiceEvent event) {
+            System.out.println("Service removed: " + event.getInfo());
+        }
+
+        @Override
+        public void serviceResolved(ServiceEvent event) {
+            System.out.println("Service resolved: " + event.getInfo());
+            try {
+                System.out.println("JmDNS sleeping...");
+                Thread.sleep(10000);
+                System.out.println("JmDNS ...slept");
+            } catch (InterruptedException ex) {
+                Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
+            }
+            try {
+                if (!Objects.equals(event.getName(), dataOwner.ID.toString())) {
+                    //TODO This conflicts a bit with other ads
+                    // timestamp 0 so if anything else has come in, this will have no effect
+                    //TODO Though, seems like maybe that'd be good in some cases
+
+                    ArrayList<Comm> rComms = new ArrayList<>();
+                    for (InetAddress addr : event.getInfo().getInetAddresses()) {
+                        rComms.add(new TcpComm(null, addr.getHostAddress(), event.getInfo().getPort()));
+                    }
+                    //TODO Remote may not be encrypted
+                    Advertisement rad = new Advertisement(UUID.fromString(event.getName()), 0L, rComms, true, null);
+                    radOut.write(rad);
+                }
+            } catch (Throwable t) {
+                t.printStackTrace();
+            }
+        }
+    }
+
     private final DataOwner dataOwner;
 
-    public LCListener(DataOwner dataOwner) {
-      this.dataOwner = dataOwner;
+    private final JmDNS jmdns;
+    private final Zeroconf zeroconf;
+    private final Service zcService;
+
+    private JmDNSProcess(DataOwner dataOwner, int port, ChannelOutput<Advertisement> radOut) {
+        this.dataOwner = dataOwner;
+
+        Zeroconf zeroconf0 = null;
+        Service zcService0 = null;
+        try {
+            zeroconf0 = new Zeroconf();
+            zeroconf0.setUseIpv4(true)
+                    .setUseIpv6(true) //DO Do?
+                    .addAllNetworkInterfaces();
+
+            //if (1==1) throw new RuntimeException("//TODO BROKEN");
+            zcService0 = new Service(dataOwner.ID.toString(), "lancopy", port);
+            zeroconf0.announce(zcService0);
+        } catch (IOException ex) {
+            Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
+        }
+        this.zeroconf = zeroconf0;
+        this.zcService = zcService0;
+
+        JmDNS jmdns0 = null;
+        try {
+            // Create a JmDNS instance
+            jmdns0 = JmDNS.create(InetAddress.getLocalHost());
+
+            jmdns0.addServiceListener("_lancopy._tcp.local.", new LCListener(dataOwner, radOut));
+        } catch (IOException e) {
+            System.out.println(e.getMessage());
+        }
+        this.jmdns = jmdns0;
     }
 
-    @Override
-    public void serviceAdded(ServiceEvent event) {
-      System.out.println("Service added: " + event.getInfo());
+    /**
+     * Static method, to hint that this kicks off threads
+     *
+     * @return
+     */
+    public static JmDNSProcess start(DataOwner dataOwner, int port, ChannelOutput<Advertisement> radOut) {
+        return new JmDNSProcess(dataOwner, port, radOut);
     }
 
-    //TODO The updating responsibilities seem split weirdly between here and WsClient
-    @Override
-    public void serviceRemoved(ServiceEvent event) {
-      System.out.println("Service removed: " + event.getInfo());
-      //dataOwner.remoteServices.remove(event.getName()); //TODO Change
+    public void shutdown() {
+        jmdns.unregisterAllServices();
+        zeroconf.unannounce(zcService);
+        zeroconf.close();
     }
-
-    @Override
-    public void serviceResolved(ServiceEvent event) {
-      System.out.println("Service resolved: " + event.getInfo());
-      if (!Objects.equals(event.getName(), dataOwner.ID.toString())) {
-        //TODO The address thing is kinda janky
-        //dataOwner.observedNode(new NodeInfo(event.getName(), event.getInfo().getHostAddress()+":"+event.getInfo().getPort(), "???", NodeInfo.State.ACTIVE));
-      }
-    }
-  }
-
-  private final DataOwner dataOwner;
-
-  private final JmDNS jmdns;
-  private final Zeroconf zeroconf;
-  private final Service zcService;
-
-  private JmDNSProcess(DataOwner dataOwner) {
-    this.dataOwner = dataOwner;
-
-    Zeroconf zeroconf0 = null;
-    Service zcService0 = null;
-    try {
-      zeroconf0 = new Zeroconf();
-      zeroconf0.setUseIpv4(true)
-               .setUseIpv6(false)
-               .addAllNetworkInterfaces();
-
-      if (1==1) throw new RuntimeException("//TODO BROKEN");
-      int PORT = -1;
-      zcService0 = new Service(dataOwner.ID.toString(), "lancopy", PORT);
-      zeroconf0.announce(zcService0);
-    } catch (IOException ex) {
-      Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
-    }
-    this.zeroconf = zeroconf0;
-    this.zcService = zcService0;
-
-    JmDNS jmdns0 = null;
-    try {
-      // Create a JmDNS instance
-      jmdns0 = JmDNS.create(InetAddress.getLocalHost());
-
-      jmdns0.addServiceListener("_lancopy._tcp.local.", new LCListener(dataOwner));
-    } catch (IOException e) {
-      System.out.println(e.getMessage());
-    }
-    this.jmdns = jmdns0;
-  }
-
-  /**
-   * Static method, to hint that this kicks off threads
-   *
-   * @return
-   */
-  public static JmDNSProcess start(DataOwner dataOwner) {
-    return new JmDNSProcess(dataOwner);
-  }
-
-  private final OkHttpClient client = new OkHttpClient();
-
-  public Data pullFromNode(String id) throws IOException {
-    //TODO Janky addressing, again
-    if (1==1) throw new RuntimeException("//TODO BROKEN");
-    String addr = id;
-    Request request = new Request.Builder().url("http://"+id+"/data").build();
-    try (Response response = client.newCall(request).execute()) {
-      switch (response.header("content-type")) {
-        case "text/plain":
-          return TextData.deserialize(response.body().byteStream());
-        case "application/octet-stream":
-          return BinaryData.deserialize(response.body().byteStream());
-        case "lancopy/files":
-          //return FilesData.deserialize(response.body().byteStream());
-            throw new RuntimeException("Not yet refactored");
-        default:
-          return new ErrorData("Unhandled MIME: " + response.header("content-type"));
-      }
-    }
-  }
-
-  public void shutdown() {
-    jmdns.unregisterAllServices();
-    zeroconf.unannounce(zcService);
-    zeroconf.close();
-  }
 }

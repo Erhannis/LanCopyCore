@@ -185,6 +185,10 @@ Augh, wait, how to decide which NodeManager gets an incoming connection?
 TODO
   show NM backpressure on ui?
   show component health - CM, NM, Comms
+  show active Comms
+  keep record of broken Comms, to retry later?
+  auto-reconnect?
+  show history of Ads and Summarys
 
 DO
   hook up connection timeouts

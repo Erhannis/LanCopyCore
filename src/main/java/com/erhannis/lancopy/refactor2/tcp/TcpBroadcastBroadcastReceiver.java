@@ -5,6 +5,7 @@
 package com.erhannis.lancopy.refactor2.tcp;
 
 import com.erhannis.lancopy.refactor2.BroadcastReceiver;
+import com.erhannis.mathnstuff.MeUtils;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -62,18 +63,18 @@ public class TcpBroadcastBroadcastReceiver extends BroadcastReceiver {
 
     @Override
     public void run() {
-        System.out.println(">>TcpBBA " + port);
+        System.out.println(">>TcpBroadcastBroadcastReceiver " + port);
         try {
             socket = new DatagramSocket(port);
             while (TRUE) {
                 try {
                     DatagramPacket packet = new DatagramPacket(buf, buf.length);
                     socket.receive(packet);
-                    //String received = new String(packet.getData(), 0, packet.getLength());
-                    //System.out.println("BA rx " + received);
+                    String received = MeUtils.cleanTextContent(new String(packet.getData(), 0, packet.getLength()), "�");
+                    System.out.println("TcpBBR rx " + received);
                     rxMsgOut.write(copyData(packet));
                 } catch (SocketException | PoisonException ex) {
-                    System.out.println("<<TcpBBA");
+                    System.out.println("<<TcpBroadcastBroadcastReceiver");
                     break;
                 } catch (IOException ex) {
                     Logger.getLogger(TcpBroadcastBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
@@ -84,7 +85,7 @@ public class TcpBroadcastBroadcastReceiver extends BroadcastReceiver {
             Logger.getLogger(TcpBroadcastBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
             return; //TODO ??
         } finally {
-            System.out.println("<<TcpBBA");
+            System.out.println("<<TcpBroadcastBroadcastReceiver");
         }
     }
 
