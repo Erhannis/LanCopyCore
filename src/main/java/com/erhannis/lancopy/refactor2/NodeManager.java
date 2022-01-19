@@ -211,6 +211,8 @@ public class NodeManager implements CSProcess {
     
     @Override
     public void run() {
+        //TODO Allow unidirectional comms?  Except, TLS requires an exchange...  TLS on [Comm], rather than [TLS on Comm] ?
+        
         System.out.println("NodeManager starting up: " + nodeId);
         Alternative[] alt = new Alternative[]{regenAlt()};
         while (true) {
