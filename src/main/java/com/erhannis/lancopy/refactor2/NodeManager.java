@@ -19,21 +19,31 @@ import java.util.Comparator;
 import java.util.Iterator;
 import java.util.List;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jcsp.helpers.BackpressureRegulator;
 import jcsp.helpers.JcspUtils;
 import jcsp.helpers.JcspUtils.DeadlockLoggingChannelOutput;
 import jcsp.lang.Alternative;
+import jcsp.lang.AltingBarrier;
 import jcsp.lang.AltingChannelInput;
+import jcsp.lang.AltingChannelInputInt;
 import jcsp.lang.AltingChannelOutput;
 import jcsp.lang.Any2OneChannel;
+import jcsp.lang.Any2OneChannelInt;
+import jcsp.lang.Barrier;
 import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.ChannelOutputInt;
 import jcsp.lang.Guard;
+import jcsp.lang.JoinFork;
+import jcsp.lang.Parallel;
 import jcsp.lang.PoisonException;
 import jcsp.lang.ProcessManager;
+import jcsp.util.InfiniteBuffer;
+import jcsp.util.ints.InfiniteBufferInt;
 
 /**
  * This represents a Node, in the view of the CommsManager.
@@ -152,6 +162,8 @@ public class NodeManager implements CSProcess {
     private final AltingChannelInput<CommChannel> incomingConnectionIn;
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutput<Pair<Comm,Boolean>> commStatusOut;
+    
+    private final JoinFork internalJF = new JoinFork();
 
     /**
      * txMsgIn should be buffered, imo - NM should not block CM.
@@ -180,15 +192,16 @@ public class NodeManager implements CSProcess {
         this.commStatusOut = commStatusOut;
     }
 
-    private static final int N = 5; // Number of fixed Guards
+    private static final int N = 6; // Number of fixed Guards
     
     private Alternative regenAlt() {
         Guard[] guards = new Guard[N + connections.size()];
-        guards[0] = incomingConnectionIn;
-        guards[1] = subscribeIn;
-        guards[2] = demandShuffleChannelIn;
-        guards[3] = channelReaderShuffleBIn;
-        guards[4] = txMsgIn;
+        guards[0] = internalJF;
+        guards[1] = incomingConnectionIn;
+        guards[2] = subscribeIn;
+        guards[3] = demandShuffleChannelIn;
+        guards[4] = channelReaderShuffleBIn;
+        guards[5] = txMsgIn;
         for (int i = 0; i < connections.size(); i++) {
             guards[i+N] = connections.get(i).rxMsgIn;
         }
@@ -198,16 +211,20 @@ public class NodeManager implements CSProcess {
     @Override
     public void run() {
         System.out.println("NodeManager starting up: " + nodeId);
-        Alternative alt = regenAlt();
+        Alternative[] alt = new Alternative[]{regenAlt()};
         while (true) {
             try {
                 //TODO Should we be able to rx messages while blocked trying to send a message?  ...Not until it becomes important, I think.
                 //  Like, it might be more efficient, but only under certain circumstances, and it feels confusing to me.
                 // I've switched this from fairSelect to priSelect, because I want to ensure channel shuffling occurs before transmission requests.
                 //  It'd be nice if you could nest selection, and like, some of it's priselect and some of it's fairselect...
-                int idx = alt.priSelect();
+                int idx = alt[0].priSelect();
                 switch (idx) {
-                    case 0: { // incomingConnectionIn
+                    case 0: { // internalJF
+                        internalJF.accept(null);
+                        break;
+                    }
+                    case 1: { // incomingConnectionIn
                         CommChannel cc = incomingConnectionIn.read();
 
                         try {
@@ -250,56 +267,96 @@ public class NodeManager implements CSProcess {
                         }
 
                         connections.sort(ChannelReader.COMPARATOR);
-                        alt = regenAlt();   
+                        alt[0] = regenAlt();   
                         break;
                     }
-                    case 1: { // subscribeIn
+                    case 2: { // subscribeIn
                         List<Comm> comms = subscribeIn.read();
                         //DO Optionally parallel
+                        final int count = comms.size();
+                        Any2OneChannelInt successChannel = Channel.any2oneInt(new InfiniteBufferInt());
+                        AltingChannelInputInt successIn = successChannel.in();
+                        ChannelOutputInt successOut = JcspUtils.logDeadlock(successChannel.out());
+                        
+                        //CountDownLatch cdl = new CountDownLatch(count);
+                        ArrayList<CSProcess> processes = new ArrayList<>();
                         for (Comm comm : comms) {
-                            try {
-                                CommChannel cc = comm.connect();
-                                if (dataOwner.encrypted) {
-                                    //TODO Are interrupts still a thing?
-                                    //TODO Verify cert matches id
-                                    cc = new TlsWrapper(dataOwner, true, cc);
-                                }
-                                ChannelReader cr = new ChannelReader(cc, nodeId);
-                                new ProcessManager(cr).start();
-                                System.out.println("NM created CR: " + cr.token);
-                            
-                                // Send self-identification
+                            processes.add(() -> {
                                 try {
-                                    //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
-                                    byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
-                                    cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
-                                    cr.cc.write(ByteBuffer.wrap(msg));
-
-                                    // If the above lines threw, we don't want to add this connection, anyway
-                                    connections.add(cr);
-                                    commStatusOut.write(Pair.gen(comm, true));
-                                } catch (IOException ex) {
-                                    Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                                    System.err.println("NodeManager error subscribing; closed comm: " + cr.cc.comm);
-                                    System.err.println("NM poisoning " + cr.token);
-                                    cr.rxMsgIn.poison(10);
-                                    try {
-                                        cr.cc.close();
-                                    } catch (IOException ex1) {
-                                        Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
+                                    CommChannel cc = comm.connect();
+                                    if (dataOwner.encrypted) {
+                                        //TODO Are interrupts still a thing?
+                                        //TODO Verify cert matches id
+                                        cc = new TlsWrapper(dataOwner, true, cc);
                                     }
-                                    commStatusOut.write(Pair.gen(comm, false));
+                                    ChannelReader cr = new ChannelReader(cc, nodeId);
+                                    new ProcessManager(cr).start();
+                                    System.out.println("NM created CR: " + cr.token);
+
+                                    // Send self-identification
+                                    try {
+                                        //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
+                                        byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                        cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
+                                        cr.cc.write(ByteBuffer.wrap(msg));
+
+                                        // If the above lines threw, we don't want to add this connection, anyway
+                                        internalJF.join(() -> {
+                                            connections.add(cr);
+                                            commStatusOut.write(Pair.gen(comm, true));
+                                            connections.sort(ChannelReader.COMPARATOR);
+                                            alt[0] = regenAlt();
+                                            successOut.write(count);
+                                            return null;
+                                        });
+                                    } catch (IOException ex) {
+                                        Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
+                                        System.err.println("NodeManager error subscribing; closed comm: " + cr.cc.comm);
+                                        System.err.println("NM poisoning " + cr.token);
+                                        cr.rxMsgIn.poison(10);
+                                        try {
+                                            cr.cc.close();
+                                        } catch (IOException ex1) {
+                                            Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
+                                        }
+                                        internalJF.join(() -> {
+                                            commStatusOut.write(Pair.gen(comm, false));
+                                            return null;
+                                        });
+                                    }
+                                } catch (Exception ex) {
+                                    Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
+                                    internalJF.join(() -> {
+                                        commStatusOut.write(Pair.gen(comm, false));
+                                        return null;
+                                    });
+                                } finally {
+                                    successOut.write(1);
                                 }
-                            } catch (Exception ex) {
-                                Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
-                                commStatusOut.write(Pair.gen(comm, false));
+                            });
+                        }
+                        
+                        new ProcessManager(new Parallel(processes.toArray(new CSProcess[0]))).start();
+                        
+                        int remaining = count;
+                        Alternative waitingAlt = new Alternative(new Guard[]{successIn, internalJF});
+                        while (remaining > 0) {
+                            switch (waitingAlt.priSelect()) {
+                                case 0: { // successIn
+                                    remaining -= successIn.read();
+                                    System.out.println("NM remaining: " + remaining);
+                                    break;
+                                }
+                                case 1: { // internalJF
+                                    internalJF.accept(null);
+                                    break;
+                                }
                             }
                         }
-                        connections.sort(ChannelReader.COMPARATOR);
-                        alt = regenAlt();
+                        System.out.println("NM stop waiting");
                         break;
                     }
-                    case 2: { // demandShuffleChannelIn
+                    case 3: { // demandShuffleChannelIn
                         CRToken token = demandShuffleChannelIn.read();
                         for (Iterator<ChannelReader> cri = connections.iterator(); cri.hasNext();) {
                             ChannelReader cr = cri.next();
@@ -307,23 +364,24 @@ public class NodeManager implements CSProcess {
                                 System.out.println("NodeManager giving up channel reader: " + cr.cc.comm);
                                 channelReaderShuffleAOut.write(cr);
                                 cri.remove();
-                                alt = regenAlt();
+                                alt[0] = regenAlt();
                                 break;
                             }
                         }
                         break;
                     }
-                    case 3: { // channelReaderShuffleBIn
+                    case 4: { // channelReaderShuffleBIn
                         ChannelReader cr = channelReaderShuffleBIn.read();
                         System.out.println("NM adopted CR: " + cr.token);
                         connections.add(cr);
                         connections.sort(ChannelReader.COMPARATOR);
-                        alt = regenAlt();
+                        alt[0] = regenAlt();
                         break;
                     }
-                    case 4: { // txMsgIn
+                    case 5: { // txMsgIn
                         byte[] msg = txMsgIn.read();
-                        System.out.println("NM tx " + msg);
+                        System.out.println("NM tx... " + msg);
+                        boolean success = false;
                         if (msg.length == 1) {
                             System.out.println("weird tx; " + Arrays.toString(msg));
                         }
@@ -332,6 +390,7 @@ public class NodeManager implements CSProcess {
                             try {
                                 cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
                                 cr.cc.write(ByteBuffer.wrap(msg));
+                                success = true;
                                 break; // We succeeded
                             } catch (IOException ex) {
                                 Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
@@ -344,13 +403,18 @@ public class NodeManager implements CSProcess {
                                     Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
                                 }
                                 cri.remove();
-                                alt = regenAlt();
+                                alt[0] = regenAlt();
                                 if (cr.cc.comm != null) {
                                     commStatusOut.write(Pair.gen(cr.cc.comm, false));
                                 } else {
                                     dataOwner.errOnce("//TODO Figure out how to show incame connections status");
                                 }
                             }
+                        }
+                        if (success) {
+                            System.out.println("NM ...tx");
+                        } else {
+                            System.err.println("NM failed to tx");
                         }
                         break;
                     }
@@ -371,7 +435,7 @@ public class NodeManager implements CSProcess {
                                 Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                             }
                             connections.remove(idx-N);
-                            alt = regenAlt();
+                            alt[0] = regenAlt();
                             if (cr.cc.comm != null) {
                                 commStatusOut.write(Pair.gen(cr.cc.comm, false));
                             } else {

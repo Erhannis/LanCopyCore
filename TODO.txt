@@ -180,3 +180,10 @@ Augh, wait, how to decide which NodeManager gets an incoming connection?
     Note, btw, unless verified, this would allow A to tell B to send data to C, which might be undesirable, for some reason.
   Maybe the NM tags passed-on `byte[] msg` with a CommChannelTag?
     Then, if the CM gets an ID msg that doesn't match the ... hang on
+
+
+TODO
+  show NM backpressure on ui?
+
+DO
+  hook up connection timeouts
