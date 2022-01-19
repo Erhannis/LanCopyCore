@@ -45,6 +45,7 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
+import jcsp.lang.ChannelOutputInt;
 import okhttp3.OkHttpClient;
 import sun.security.x509.X500Name;
 
@@ -89,11 +90,11 @@ public class DataOwner {
     public final boolean encrypted;
     public final ContextFactory.Context tlsContext;
 
-    public DataOwner(Function<String, Boolean> trustCallback) {
-        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME, trustCallback);
+    public DataOwner(Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) {
+        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME, trustCallback, showLocalFingerprintOut);
     }
 
-    public DataOwner(String optionsPath, Function<String, Boolean> trustCallback) {
+    public DataOwner(String optionsPath, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) {
         this.options = Options.demandOptions(optionsPath);
         this.ohClient = new OkHttpClient.Builder()
                 .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
@@ -107,7 +108,7 @@ public class DataOwner {
             
             ContextFactory.Context ctx = null;
             try {
-                ctx = ContextFactory.authenticatedContext("TLSv1.3", keystorePath, truststorePath, trustCallback);
+                ctx = ContextFactory.authenticatedContext("TLSv1.3", keystorePath, truststorePath, trustCallback, showLocalFingerprintOut);
             } catch (GeneralSecurityException ex) {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             } catch (IOException ex) {

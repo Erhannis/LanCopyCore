@@ -21,17 +21,21 @@ import jcsp.helpers.JcspUtils;
 import jcsp.helpers.SynchronousSplitter;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
+import jcsp.lang.AltingChannelInputInt;
 import jcsp.lang.AltingFunctionChannel;
 import jcsp.lang.AltingTaskChannel;
 import jcsp.lang.Any2OneChannel;
+import jcsp.lang.Any2OneChannelInt;
 import jcsp.lang.CSProcess;
 import jcsp.lang.CSTimer;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.ChannelOutputInt;
 import jcsp.lang.Guard;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
+import jcsp.util.ints.OverWriteOldestBufferInt;
 
 /**
  *
@@ -39,7 +43,11 @@ import jcsp.util.InfiniteBuffer;
  */
 public class LanCopyNet {
     public static UiInterface startNet(Function<String, Boolean> trustCallback) throws InterruptedException, IOException {
-        DataOwner dataOwner = new DataOwner(trustCallback);
+        Any2OneChannelInt showLocalFingerprintChannel = Channel.any2oneInt(new OverWriteOldestBufferInt(1));
+        AltingChannelInputInt showLocalFingerprintIn = showLocalFingerprintChannel.in();
+        ChannelOutputInt showLocalFingerprintOut = JcspUtils.logDeadlock(showLocalFingerprintChannel.out());
+
+        DataOwner dataOwner = new DataOwner(trustCallback, showLocalFingerprintOut);
         
         Any2OneChannel<Advertisement> rxAdChannel = Channel.<Advertisement>any2one(new InfiniteBuffer<>());
         AltingChannelInput<Advertisement> rxAdIn = rxAdChannel.in();
@@ -86,9 +94,9 @@ public class LanCopyNet {
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
-            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer())
+            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer())
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, showLocalFingerprintIn, dataCall.getClient(), rosterCall.getClient(), adCall.getClient());
     }
 
     public static class UiInterface {
@@ -98,17 +106,19 @@ public class LanCopyNet {
         public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
+        public final AltingChannelInputInt showLocalFingerprintIn;
         public final FCClient<UUID, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInputInt showLocalFingerprintIn, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
             this.commStatusIn = commStatusIn;
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
+            this.showLocalFingerprintIn = showLocalFingerprintIn;
             this.dataCall = dataCall;
             this.rosterCall = rosterCall;
             this.adCall = adCall;

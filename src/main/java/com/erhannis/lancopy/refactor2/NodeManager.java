@@ -163,7 +163,8 @@ public class NodeManager implements CSProcess {
     private final AltingChannelInput<CommChannel> incomingConnectionIn;
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutput<Pair<Comm,Boolean>> commStatusOut;
-    
+    private final ChannelOutputInt showLocalFingerprintOut;
+
     private final JoinFork internalJF = new JoinFork();
 
     /**
@@ -179,8 +180,9 @@ public class NodeManager implements CSProcess {
      * @param incomingConnectionIn
      * @param subscribeIn
      * @param commStatusOut 
+     * @param showLocalFingerprintOut
      */
-    public NodeManager(DataOwner dataOwner, UUID nodeId, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<Pair<CRToken, byte[]>> rxMsgOut, AltingChannelInput<CRToken> demandShuffleChannelIn, ChannelOutput<ChannelReader> channelReaderShuffleAOut, AltingChannelInput<ChannelReader> channelReaderShuffleBIn, AltingChannelInput<CommChannel> incomingConnectionIn, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Pair<Comm,Boolean>> commStatusOut) {
+    public NodeManager(DataOwner dataOwner, UUID nodeId, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<Pair<CRToken, byte[]>> rxMsgOut, AltingChannelInput<CRToken> demandShuffleChannelIn, ChannelOutput<ChannelReader> channelReaderShuffleAOut, AltingChannelInput<ChannelReader> channelReaderShuffleBIn, AltingChannelInput<CommChannel> incomingConnectionIn, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutput<Pair<Comm,Boolean>> commStatusOut, ChannelOutputInt showLocalFingerprintOut) {
         this.dataOwner = dataOwner;
         this.nodeId = nodeId;
         this.txMsgIn = txMsgIn;
@@ -191,6 +193,7 @@ public class NodeManager implements CSProcess {
         this.incomingConnectionIn = incomingConnectionIn;
         this.subscribeIn = subscribeIn;
         this.commStatusOut = commStatusOut;
+        this.showLocalFingerprintOut = showLocalFingerprintOut;
     }
 
     private static final int N = 6; // Number of fixed Guards
@@ -235,7 +238,8 @@ public class NodeManager implements CSProcess {
                                 //TODO Are interrupts still a thing?
                                 //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
                                 //TODO Verify cert matches id
-                                cc = new TlsWrapper(dataOwner, false, cc);
+                                // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
+                                cc = new TlsWrapper(dataOwner, false, cc, showLocalFingerprintOut);
                             }
                             ChannelReader cr = new ChannelReader(cc, nodeId);
                             new ProcessManager(cr).start();
@@ -290,7 +294,8 @@ public class NodeManager implements CSProcess {
                                     if (dataOwner.encrypted) {
                                         //TODO Are interrupts still a thing?
                                         //TODO Verify cert matches id
-                                        cc = new TlsWrapper(dataOwner, true, cc);
+                                        // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
+                                        cc = new TlsWrapper(dataOwner, true, cc, showLocalFingerprintOut);
                                     }
                                     ChannelReader cr = new ChannelReader(cc, nodeId);
                                     new ProcessManager(cr).start();

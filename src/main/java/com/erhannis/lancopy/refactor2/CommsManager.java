@@ -50,13 +50,16 @@ import jcsp.helpers.SynchronousSplitter;
 import jcsp.helpers.TCServer.TaskItem;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
+import jcsp.lang.AltingChannelInputInt;
 import jcsp.lang.AltingChannelOutput;
 import jcsp.lang.AltingFCServer;
 import jcsp.lang.AltingTCServer;
 import jcsp.lang.Any2OneChannel;
+import jcsp.lang.Any2OneChannelInt;
 import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.ChannelOutputInt;
 import jcsp.lang.DisableableTimer;
 import jcsp.lang.Guard;
 import jcsp.lang.One2OneChannelSymmetric;
@@ -107,7 +110,7 @@ public class CommsManager implements CSProcess {
     
     private final DataOwner dataOwner;
     
-      public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer) {
+      public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer) {
         this.dataOwner = dataOwner;
 
         this.lcommsOut = lcommsOut;
@@ -117,6 +120,7 @@ public class CommsManager implements CSProcess {
         this.lsumIn = lsumIn;
         this.statusOut = statusOut;
         this.subscribeIn = subscribeIn;
+        this.showLocalFingerprintOut = showLocalFingerprintOut;
         
         this.summaryClient = summaryClient;
         this.aadClient = aadClient;
@@ -136,6 +140,10 @@ public class CommsManager implements CSProcess {
         this.internalCommStatusIn = internalCommStatusChannel.in();
         this.internalCommStatusOut = JcspUtils.logDeadlock(internalCommStatusChannel.out());
         
+        Any2OneChannelInt internalShowLocalFingerprintChannel = Channel.any2oneInt();
+        this.internalShowLocalFingerprintIn = internalShowLocalFingerprintChannel.in();
+        this.internalShowLocalFingerprintOut = JcspUtils.logDeadlock(internalShowLocalFingerprintChannel.out());
+        
         this.broadcastMsgSplitter = new SynchronousSplitter<byte[]>();
         this.txMsgSplitter = new SynchronousSplitter<byte[]>();
     }
@@ -147,12 +155,16 @@ public class CommsManager implements CSProcess {
     private final AltingChannelInput<Summary> lsumIn;
     private final ChannelOutput<Pair<Comm,Boolean>> statusOut;
     private final AltingChannelInput<List<Comm>> subscribeIn;
+    private final ChannelOutputInt showLocalFingerprintOut;
     private final AltingChannelInput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgIn;
     private final ChannelOutput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgOut;
     private final AltingChannelInput<NodeManager.ChannelReader> internalChannelReaderShuffleAIn;
     private final ChannelOutput<NodeManager.ChannelReader> internalChannelReaderShuffleAOut;
     private final AltingChannelInput<Pair<Comm,Boolean>> internalCommStatusIn;
     private final ChannelOutput<Pair<Comm,Boolean>> internalCommStatusOut;
+    private final AltingChannelInputInt internalShowLocalFingerprintIn;
+    private final ChannelOutputInt internalShowLocalFingerprintOut;
+
     private final SynchronousSplitter<byte[]> broadcastMsgSplitter;
     private final SynchronousSplitter<byte[]> txMsgSplitter;
 
@@ -190,7 +202,7 @@ public class CommsManager implements CSProcess {
         ChannelOutput<List<Comm>> subscribeOut = JcspUtils.logDeadlock(subscribeChannel.out());
         
         
-        new ProcessManager(new NodeManager(dataOwner, id, txMsgOut.in, internalRxMsgOut, demandShuffleChannelIn, internalChannelReaderShuffleAOut, channelReaderShuffleBIn, incomingConnectionIn, subscribeIn, internalCommStatusOut)).start();
+        new ProcessManager(new NodeManager(dataOwner, id, txMsgOut.in, internalRxMsgOut, demandShuffleChannelIn, internalChannelReaderShuffleAOut, channelReaderShuffleBIn, incomingConnectionIn, subscribeIn, internalCommStatusOut, internalShowLocalFingerprintOut)).start();
         NodeManager.NMInterface nmi = new NodeManager.NMInterface(txMsgOut, internalRxMsgIn, demandShuffleChannelOut, internalChannelReaderShuffleAIn, channelReaderShuffleBOut, incomingConnectionOut, subscribeOut, internalCommStatusIn);
         nodes.put(id, nmi);
         return nmi;
@@ -205,7 +217,7 @@ public class CommsManager implements CSProcess {
         Any2OneChannel<byte[]> internalRxBroadcastChannel = Channel.<byte[]> any2one();
         AltingChannelInput<byte[]> internalRxBroadcastIn = internalRxBroadcastChannel.in();
         ChannelOutput<byte[]> internalRxBroadcastOut = JcspUtils.logDeadlock(internalRxBroadcastChannel.out());
-        
+
         
         
         
@@ -302,7 +314,7 @@ public class CommsManager implements CSProcess {
         DisableableTimer transferTimer = new DisableableTimer();
         HashMap<UUID, IncomingTransferState> incomingTransfers = new HashMap<>();
         HashMap<UUID, OutgoingTransferState> outgoingTransfers = new HashMap<>();
-        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, dataServer, rebroadcastTimer, transferTimer});
+        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, internalShowLocalFingerprintIn, dataServer, rebroadcastTimer, transferTimer});
         while (true) {
             try {
                 switch (alt.priSelect()) {
@@ -505,7 +517,11 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
-                    case 8: { // dataServer
+                    case 8: { // internalShowLocalFingerprintIn
+                        showLocalFingerprintOut.write(internalShowLocalFingerprintIn.read());
+                        break;
+                    }
+                    case 9: { // dataServer
                         TaskItem<UUID, Pair<String, InputStream>> task = dataServer.read();
                         NodeManager.NMInterface nm = nodes.get(task.val);
                         DataRequestMessage drm = new DataRequestMessage();
@@ -514,7 +530,7 @@ public class CommsManager implements CSProcess {
                         incomingTransfers.put(drm.correlationId, new IncomingTransferState(null, task));
                         break;
                     }
-                    case 9: { // rebroadcastTimer
+                    case 10: { // rebroadcastTimer
                         //TODO Permit separate intervals for different broadcast mechanisms?
                         rebroadcastInterval = (long) dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L);
                         rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
@@ -525,7 +541,7 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
-                    case 10: { // transferTimer
+                    case 11: { // transferTimer
                         boolean somethingSent = false;
                         for (Iterator<Entry<UUID, OutgoingTransferState>> iter = outgoingTransfers.entrySet().iterator(); iter.hasNext();) {
                             Entry<UUID, OutgoingTransferState> entry = iter.next();

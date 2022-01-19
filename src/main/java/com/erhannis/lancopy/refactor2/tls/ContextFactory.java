@@ -38,6 +38,7 @@ import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
 import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509TrustManager;
+import jcsp.lang.ChannelOutputInt;
 import org.apache.commons.codec.digest.DigestUtils;
 import sun.security.x509.AlgorithmId;
 import sun.security.x509.CertificateAlgorithmId;
@@ -58,7 +59,7 @@ public class ContextFactory {
     }
     
 
-    public static Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback) throws GeneralSecurityException, IOException {
+    public static Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException {
         //TODO Optionize some of these things?  Passwords, 
         
         Context ctx = new Context();
@@ -141,16 +142,29 @@ public class ContextFactory {
                 @Override
                 public void failedServerTrusted(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
                     System.out.println("failedServerTrusted " + e + "\n" + authType + " " + Arrays.toString(chain));
-                    handleCertFailure(e, chain, authType);
+                    if (handleCertFailure(e, chain, authType)) {
+                        System.out.println("handleCertFailure -> true");
+                        showLocalFingerprintOut.write(1);
+                    } else {
+                        System.out.println("handleCertFailure -> false");
+                    }
                 }                
 
-                private void handleCertFailure(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
+                /**
+                 * 
+                 * @param e
+                 * @param chain
+                 * @param authType
+                 * @return whether the user was prompted
+                 * @throws CertificateException if the user rejected the cert
+                 */
+                private boolean handleCertFailure(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
                     synchronized (trustCache) {
                         Throwable cause = e.getCause();
                         String fingerprint = DigestUtils.sha256Hex(chain[0].getEncoded());
                         if (trustCache.containsKey(fingerprint)) {
                             if (trustCache.get(fingerprint)) {
-                                return;
+                                return false;
                             } else {
                                 throw e;
                             }
@@ -195,8 +209,10 @@ public class ContextFactory {
                                 trustCache.put(fingerprint, false);
                                 throw e;
                             }
+                            return true;
                         }
                     }
+                    return false;
                 }
             };
             
