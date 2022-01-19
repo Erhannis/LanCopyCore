@@ -301,7 +301,6 @@ public class CommsManager implements CSProcess {
         
         //TODO Add verification to make sure nodes' claims match their TLS credentials
         //DO Add manual data URLs
-        //DO Proactively show local fingerprint
 
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();

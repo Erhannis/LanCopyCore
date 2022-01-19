@@ -81,7 +81,6 @@ public class NodeTracker implements CSProcess {
     public void run() {
         try {
             Alternative alt = new Alternative(new Guard[]{adIn, summaryIn, joinOut, adCallServer, summaryCallServer, rosterCallServer});
-            //DO Prevent deadlock cycles
             while (true) {
                 switch (alt.fairSelect()) {
                     case 0: // adIn

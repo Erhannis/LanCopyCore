@@ -88,7 +88,7 @@ public class TcpBroadcastBroadcastReceiver extends BroadcastReceiver {
         }
     }
 
-    //DO Different?
+    //TODO Different?
     public void shutdown() {
         try {
             this.socket.close();
