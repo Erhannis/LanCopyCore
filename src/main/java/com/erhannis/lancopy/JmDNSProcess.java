@@ -56,13 +56,6 @@ public class JmDNSProcess {
         public void serviceResolved(ServiceEvent event) {
             System.out.println("Service resolved: " + event.getInfo());
             try {
-                System.out.println("JmDNS sleeping...");
-                Thread.sleep(10000);
-                System.out.println("JmDNS ...slept");
-            } catch (InterruptedException ex) {
-                Logger.getLogger(JmDNSProcess.class.getName()).log(Level.SEVERE, null, ex);
-            }
-            try {
                 if (!Objects.equals(event.getName(), dataOwner.ID.toString())) {
                     //TODO This conflicts a bit with other ads
                     // timestamp 0 so if anything else has come in, this will have no effect

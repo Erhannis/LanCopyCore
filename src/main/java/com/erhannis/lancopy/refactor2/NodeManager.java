@@ -128,7 +128,7 @@ public class NodeManager implements CSProcess {
                                 rxMsgOut.write(null, this.token+"");
                             }
                         }
-                        rxMsgOut.write(bbMsg.array());
+                        rxMsgOut.write(bbMsg.array(), this.token+"");
                     } catch (IOException ex) {
                         Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                         System.err.println("NM.ChannelReader error, exiting - " + cc.comm + " : " + this.token);
@@ -394,7 +394,7 @@ public class NodeManager implements CSProcess {
                     }
                     case 5: { // txMsgIn
                         byte[] msg = txMsgIn.read();
-                        System.out.println("NM tx... " + msg);
+                        System.out.println("NM tx... " + this.nodeId + " " + msg);
                         boolean success = false;
                         if (msg.length == 1) {
                             System.out.println("weird tx; " + Arrays.toString(msg));
@@ -435,6 +435,7 @@ public class NodeManager implements CSProcess {
                     default: { // rxMsgIn
                         ChannelReader cr = connections.get(idx-N);
                         byte[] msg = cr.rxMsgIn.read();
+                        System.out.println("NM rx " + this.nodeId + " " + cr.cc.comm + " " + msg);
                         if (msg != null) {
                             // Pass msg on to CM
                             rxMsgOut.write(Pair.gen(cr.token, msg));

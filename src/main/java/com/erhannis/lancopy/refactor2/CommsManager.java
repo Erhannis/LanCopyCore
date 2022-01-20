@@ -306,6 +306,7 @@ public class CommsManager implements CSProcess {
         
         //TODO Add verification to make sure nodes' claims match their TLS credentials
         //DO Add manual data URLs
+        //DO Socket timeouts
 
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
