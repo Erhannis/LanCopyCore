@@ -36,7 +36,7 @@ public class TlsWrapper extends CommChannel {
     public final CommChannel wrappedChannel;
     public final TlsChannel tlsChannel;
     
-    public TlsWrapper(DataOwner dataOwner, boolean clientMode, CommChannel subchannel, ChannelOutputInt showLocalFingerprintOut) throws IOException {
+    public TlsWrapper(DataOwner dataOwner, boolean clientMode, boolean requireClientCert, CommChannel subchannel, ChannelOutputInt showLocalFingerprintOut) throws IOException {
         super(subchannel.comm); //TODO Where is this comm used?  Should null, or wrapped, or passthrough?  Passthrough, for now....
         
         this.wrappedChannel = subchannel;
@@ -87,7 +87,11 @@ public class TlsWrapper extends CommChannel {
                     .withEngineFactory(sc -> {
                         SSLEngine se = dataOwner.tlsContext.sslContext.createSSLEngine();
                         se.setUseClientMode(false);
-                        se.setNeedClientAuth(true);
+                        if (requireClientCert) {
+                            se.setNeedClientAuth(true);
+                        } else {
+                            se.setWantClientAuth(true);
+                        }
                         // Since we control both client and server, I'm restricting protocols to TLSv1.3 alone
                         //TODO Optionize?
                         se.setEnabledProtocols(new String[] {"TLSv1.3"});

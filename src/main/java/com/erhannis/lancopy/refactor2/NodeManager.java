@@ -239,7 +239,7 @@ public class NodeManager implements CSProcess {
                                 //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
                                 //TODO Verify cert matches id
                                 // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
-                                cc = new TlsWrapper(dataOwner, false, cc, showLocalFingerprintOut);
+                                cc = new TlsWrapper(dataOwner, false, true, cc, showLocalFingerprintOut);
                             }
                             ChannelReader cr = new ChannelReader(cc, nodeId);
                             new ProcessManager(cr).start();
@@ -295,7 +295,7 @@ public class NodeManager implements CSProcess {
                                         //TODO Are interrupts still a thing?
                                         //TODO Verify cert matches id
                                         // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
-                                        cc = new TlsWrapper(dataOwner, true, cc, showLocalFingerprintOut);
+                                        cc = new TlsWrapper(dataOwner, true, true, cc, showLocalFingerprintOut);
                                     }
                                     ChannelReader cr = new ChannelReader(cc, nodeId);
                                     new ProcessManager(cr).start();

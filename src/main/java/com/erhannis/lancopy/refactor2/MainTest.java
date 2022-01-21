@@ -150,7 +150,7 @@ public class MainTest {
         List<Comm> lComms = Lists.newArrayList(new TcpComm(null, "localhost", localPort));
         Advertisement lad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), lComms, true, null);
 
-        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null, null);
+        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null, null, null);
 
         new ProcessManager(new Parallel(new CSProcess[]{
             cm,

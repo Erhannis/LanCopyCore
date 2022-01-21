@@ -59,7 +59,7 @@ public class ContextFactory {
     }
     
 
-    public static Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException {
+    public static synchronized Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException {
         //TODO Optionize some of these things?  Passwords, 
         
         Context ctx = new Context();

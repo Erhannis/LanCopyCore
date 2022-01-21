@@ -20,6 +20,7 @@ import com.erhannis.lancopy.refactor2.tcp.TcpBroadcastBroadcastTransmitter;
 import com.erhannis.lancopy.refactor2.tcp.TcpCommChannel;
 import com.erhannis.lancopy.refactor2.tcp.TcpMulticastBroadcastReceiver;
 import com.erhannis.lancopy.refactor2.tcp.TcpMulticastBroadcastTransmitter;
+import com.erhannis.lancopy.refactor2.tls.TlsWrapper;
 import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
@@ -31,9 +32,14 @@ import java.io.OutputStream;
 import java.io.PipedInputStream;
 import java.io.PipedOutputStream;
 import java.net.InetAddress;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketException;
 import java.net.UnknownHostException;
 import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
@@ -58,6 +64,7 @@ import jcsp.lang.AltingTCServer;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.Any2OneChannelInt;
 import jcsp.lang.CSProcess;
+import jcsp.lang.CSTimer;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.ChannelOutputInt;
@@ -111,7 +118,7 @@ public class CommsManager implements CSProcess {
     
     private final DataOwner dataOwner;
     
-      public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer) {
+      public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer, FCClient<String, Boolean> confirmationClient) {
         this.dataOwner = dataOwner;
 
         this.lcommsOut = lcommsOut;
@@ -128,6 +135,7 @@ public class CommsManager implements CSProcess {
         this.rosterClient = rosterClient;
         this.ldataClient = ldataClient;
         this.dataServer = dataServer;
+        this.confirmationClient = confirmationClient;
         
         Any2OneChannel<Pair<NodeManager.CRToken,byte[]>> internalRxMsgChannel = Channel.<Pair<NodeManager.CRToken,byte[]>> any2one();
         this.internalRxMsgIn = internalRxMsgChannel.in();
@@ -174,6 +182,7 @@ public class CommsManager implements CSProcess {
     private final FCClient<Void, List<Advertisement>> rosterClient;
     private final FCClient<Void, Data> ldataClient;
     private final AltingTCServer<UUID, Pair<String, InputStream>> dataServer;    
+    private final FCClient<String, Boolean> confirmationClient;
 
     private HashMap<UUID, NodeManager.NMInterface> nodes = new HashMap<>();
     
@@ -295,6 +304,84 @@ public class CommsManager implements CSProcess {
             new TcpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
             new TcpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut), //TODO Ditto
             new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
+            () -> { // Traditional HTTP, manual url
+                //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
+                while (true) {
+                    try {
+                        CSTimer timer = new CSTimer();
+                        boolean plainHttpEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.enabled", false);
+                        int plainHttpPort = (int) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.port", 12111);
+                        boolean plainHttpRequireCert = (boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.require_cert", false);
+                        boolean plainHttpConfirm = (boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.show_confirmation", false);
+                        if (plainHttpEnabled) {
+                            System.out.println("CMPH opening ssc");
+                            ServerSocketChannel ss = ServerSocketChannel.open();
+                            
+                            try {
+                                System.out.println("CMPH binding to " + plainHttpPort);
+                                ss.socket().bind(new InetSocketAddress(plainHttpPort));
+                                System.out.println("CMPH accepting...");
+                                SocketChannel sc = ss.accept();
+                                System.out.println("CMPH ...accepted");
+
+                                if (!plainHttpConfirm || confirmationClient.call("Incoming plain http(s) connection.  Accept?")) {
+                                    CommChannel subchannel = new TcpCommChannel(sc);
+                                    TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, false, plainHttpRequireCert, subchannel, showLocalFingerprintOut);
+                                    CommChannel channel = tlsWrapper;
+                                    //CommChannel channel = subchannel;
+
+                                    Data data = ldataClient.call(null);
+                                    String mimeType = data.getMime(true);
+                                    InputStream is = data.serialize(true);
+                                    System.out.println("CMPH getting dumbHttpChunks");
+                                    InputStream httpChunks = MeUtils.dumbHttpChunks(mimeType, is);
+
+                                    final int N = 0x4000;
+                                    byte[] buf = new byte[N];
+                                    int read = 0;
+                                    int total = 0;
+                                    System.out.println("CMPH reading...");
+                                    while ((read = httpChunks.read(buf)) >= 0) {
+                                        if (read > 0) {
+                                            total += read;
+                                            //System.out.println("CMPH read " + read + " ; writing...");
+                                            //sc.write(ByteBuffer.wrap(buf, 0, read));
+                                            channel.write(ByteBuffer.wrap(buf, 0, read));
+                                            //System.out.println("CMPH ...wrote");                                        
+                                        }
+                                        //System.out.println("CMPH reading...");
+                                    }
+                                    System.out.println("CMPH ...no more ; wrote " + total);
+
+                                    while (true) {
+                                        ByteBuffer response = ByteBuffer.allocate(0x10000);
+                                        int count = channel.read(response);
+                                        if (count >= 0) {
+                                            //System.out.println("CMPH rx count " + count);
+                                            //System.out.println("CMPH rx msg: " + new String(response.array(), 0, count));
+                                        } else {
+                                            System.out.println("CMPH rx finished");
+                                            break;
+                                        }
+                                    }
+
+                                    System.out.println("CMPH closing");
+                                    httpChunks.close();
+                                    channel.close();
+                                }
+                                sc.close();
+                            } finally {
+                                timer.sleep(1000);
+                                ss.close();
+                            }
+                        }
+
+                        timer.sleep(500);
+                    } catch (Throwable t) {
+                        t.printStackTrace();
+                    }
+                }
+            }
         })).start();
         
         

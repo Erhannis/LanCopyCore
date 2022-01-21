@@ -189,6 +189,9 @@ TODO
   keep record of broken Comms, to retry later?
   auto-reconnect?
   show history of Ads and Summarys
+  add incoming to Comms ui page
+  note: if incoming connection from firewalled, NM temporarily deadlocks trying to connect, until fail
+    let incoming, or existing, connection count?
 
 DO
   hook up connection timeouts
