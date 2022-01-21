@@ -308,6 +308,7 @@ public class CommsManager implements CSProcess {
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
                 while (true) {
                     try {
+                        //TODO Option changes don't take effect until the next loop, maybe after a new connection attempt, which is bad
                         CSTimer timer = new CSTimer();
                         boolean plainHttpEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.enabled", false);
                         int plainHttpPort = (int) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.port", 12111);
