@@ -4,6 +4,7 @@
  */
 package com.erhannis.lancopy.refactor2.tcp;
 
+import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor.tcp.TcpComm;
 import com.erhannis.lancopy.refactor2.CommChannel;
 import com.erhannis.lancopy.refactor2.Interrupt;
@@ -11,6 +12,8 @@ import java.io.IOException;
 import java.net.InetSocketAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
+import java.net.SocketOption;
+import java.net.StandardSocketOptions;
 import java.nio.ByteBuffer;
 import java.nio.channels.ByteChannel;
 import java.nio.channels.ServerSocketChannel;
@@ -37,11 +40,11 @@ public class TcpCommChannel extends CommChannel {
      * @param comm
      * @throws IOException 
      */
-    public TcpCommChannel(TcpComm comm) throws IOException {
+    public TcpCommChannel(DataOwner dataOwner, TcpComm comm) throws IOException {
         super(comm);
         System.out.println("TcpCommChannel connecting " + comm);
         SocketChannel rawChannel = SocketChannel.open();
-        rawChannel.connect(new InetSocketAddress(comm.host, comm.port));
+        rawChannel.socket().connect(new InetSocketAddress(comm.host, comm.port), (Integer) dataOwner.options.getOrDefault("Comms.tcp.CONNECT_TIMEOUT", 35000));
         System.out.println("TcpCommChannel connected " + comm);
         this.rawChannel = rawChannel;
     }

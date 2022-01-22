@@ -144,7 +144,7 @@ public class NodeManager implements CSProcess {
     
     private final DataOwner dataOwner;
     private final UUID nodeId;
-    //DO Don't create duplicate of any open cc
+    //TODO Don't create duplicate of any open cc?
     /**
      * Open connections to node.
      * The first should be the "best" - fastest, most reliable, whatever.

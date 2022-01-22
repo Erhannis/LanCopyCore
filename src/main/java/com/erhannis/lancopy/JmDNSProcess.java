@@ -89,7 +89,7 @@ public class JmDNSProcess {
         try {
             zeroconf0 = new Zeroconf();
             zeroconf0.setUseIpv4(true)
-                    .setUseIpv6(true) //DO Do?
+                    .setUseIpv6(true) //TODO Do?
                     .addAllNetworkInterfaces();
 
             //if (1==1) throw new RuntimeException("//TODO BROKEN");

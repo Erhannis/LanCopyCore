@@ -306,6 +306,7 @@ public class CommsManager implements CSProcess {
             new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
             () -> { // Traditional HTTP, manual url
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
+                //       And should probably be a class in its own right.
                 while (true) {
                     try {
                         //TODO Option changes don't take effect until the next loop, maybe after a new connection attempt, which is bad
@@ -393,8 +394,7 @@ public class CommsManager implements CSProcess {
         startNodeManager(null, false);
         
         //TODO Add verification to make sure nodes' claims match their TLS credentials
-        //DO Add manual data URLs
-        //DO Socket timeouts
+        //TODO Socket timeouts?
 
         byte[] lastBroadcast = null;
         DisableableTimer rebroadcastTimer = new DisableableTimer();
