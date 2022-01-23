@@ -5,6 +5,7 @@
  */
 package com.erhannis.lancopy.refactor.tcp;
 
+import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor2.CommChannel;
@@ -58,7 +59,7 @@ public class TcpComm extends Comm {
     }
 
     @Override
-    public CommChannel connect() throws Exception {
-        return new TcpCommChannel(this);
+    public CommChannel connect(DataOwner dataOwner) throws Exception {
+        return new TcpCommChannel(dataOwner, this);
     }
 }

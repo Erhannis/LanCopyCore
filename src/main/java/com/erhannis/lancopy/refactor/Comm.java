@@ -5,6 +5,7 @@
  */
 package com.erhannis.lancopy.refactor;
 
+import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor2.CommChannel;
 import java.util.Objects;
 
@@ -42,7 +43,7 @@ public abstract class Comm {
         this(null, null, 100);
     }
     
-    public abstract CommChannel connect() throws Exception;
+    public abstract CommChannel connect(DataOwner dataOwner) throws Exception;
     
     @Override
     public boolean equals(Object obj) {

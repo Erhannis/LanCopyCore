@@ -290,7 +290,7 @@ public class NodeManager implements CSProcess {
                         for (Comm comm : comms) {
                             processes.add(() -> {
                                 try {
-                                    CommChannel cc = comm.connect();
+                                    CommChannel cc = comm.connect(dataOwner);
                                     if (dataOwner.encrypted) {
                                         //TODO Are interrupts still a thing?
                                         //TODO Verify cert matches id

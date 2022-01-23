@@ -192,6 +192,5 @@ TODO
   add incoming to Comms ui page
   note: if incoming connection from firewalled, NM temporarily deadlocks trying to connect, until fail
     let incoming, or existing, connection count?
+  socket timeouts?
 
-DO
-  hook up connection timeouts
