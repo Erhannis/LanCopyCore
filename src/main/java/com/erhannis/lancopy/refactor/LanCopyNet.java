@@ -43,13 +43,7 @@ import jcsp.util.ints.OverWriteOldestBufferInt;
  * @author erhannis
  */
 public class LanCopyNet {
-    public static UiInterface startNet(Function<String, Boolean> trustCallback) throws InterruptedException, IOException {
-        Any2OneChannelInt showLocalFingerprintChannel = Channel.any2oneInt(new OverWriteOldestBufferInt(1));
-        AltingChannelInputInt showLocalFingerprintIn = showLocalFingerprintChannel.in();
-        ChannelOutputInt showLocalFingerprintOut = JcspUtils.logDeadlock(showLocalFingerprintChannel.out());
-
-        DataOwner dataOwner = new DataOwner(trustCallback, showLocalFingerprintOut);
-        
+    public static UiInterface startNet(DataOwner dataOwner, ChannelOutputInt showLocalFingerprintOut) throws InterruptedException, IOException {
         Any2OneChannel<Advertisement> rxAdChannel = Channel.<Advertisement>any2one(new InfiniteBuffer<>());
         AltingChannelInput<Advertisement> rxAdIn = rxAdChannel.in();
         ChannelOutput<Advertisement> rxAdOut = JcspUtils.logDeadlock(rxAdChannel.out());
@@ -98,7 +92,7 @@ public class LanCopyNet {
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
             new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer(), confirmationCall.getClient())
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, showLocalFingerprintIn, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
     }
 
     public static class UiInterface {
@@ -108,20 +102,18 @@ public class LanCopyNet {
         public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
-        public final AltingChannelInputInt showLocalFingerprintIn;
         public final FCClient<UUID, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         public final AltingFCServer<String, Boolean> confirmationServer;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, AltingChannelInputInt showLocalFingerprintIn, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall, AltingFCServer<String, Boolean> confirmationServer) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall, AltingFCServer<String, Boolean> confirmationServer) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
             this.commStatusIn = commStatusIn;
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
-            this.showLocalFingerprintIn = showLocalFingerprintIn;
             this.dataCall = dataCall;
             this.rosterCall = rosterCall;
             this.adCall = adCall;

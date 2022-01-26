@@ -45,8 +45,10 @@ import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.jmdns.ServiceInfo;
+import javax.naming.InvalidNameException;
 import jcsp.lang.ChannelOutputInt;
 import okhttp3.OkHttpClient;
+import org.spongycastle.operator.OperatorCreationException;
 import sun.security.x509.X500Name;
 
 /**
@@ -90,12 +92,16 @@ public class DataOwner {
     public final boolean encrypted;
     public final ContextFactory.Context tlsContext;
 
-    public DataOwner(Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) {
-        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME, trustCallback, showLocalFingerprintOut);
+    public DataOwner(ChannelOutputInt showLocalFingerprintOut, Function<String, Boolean> trustCallback) {
+        this(OptionsFrame.DEFAULT_OPTIONS_FILENAME, showLocalFingerprintOut, trustCallback);
     }
 
-    public DataOwner(String optionsPath, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) {
-        this.options = Options.demandOptions(optionsPath);
+    public DataOwner(String optionsPath, ChannelOutputInt showLocalFingerprintOut, Function<String, Boolean> trustCallback) {
+        this(Options.demandOptions(optionsPath), showLocalFingerprintOut, trustCallback);
+    }
+    
+    public DataOwner(Options options, ChannelOutputInt showLocalFingerprintOut, Function<String, Boolean> trustCallback) {
+        this.options = options;
         this.ohClient = new OkHttpClient.Builder()
                 .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
                 .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
@@ -105,13 +111,18 @@ public class DataOwner {
             this.encrypted = true;
             String keystorePath = (String) options.getOrDefault("Security.KEYSTORE_PATH", "lancopy.ks");
             String truststorePath = (String) options.getOrDefault("Security.TRUSTSTORE_PATH", "lancopy.ts");
+            String protocol = (String) options.getOrDefault("Security.PROTOCOL", "TLSv1.3");
             
             ContextFactory.Context ctx = null;
             try {
-                ctx = ContextFactory.authenticatedContext("TLSv1.3", keystorePath, truststorePath, trustCallback, showLocalFingerprintOut);
+                ctx = ContextFactory.authenticatedContext(protocol, keystorePath, truststorePath, trustCallback, showLocalFingerprintOut);
             } catch (GeneralSecurityException ex) {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             } catch (IOException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (OperatorCreationException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (InvalidNameException ex) {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             }
             this.tlsContext = ctx;

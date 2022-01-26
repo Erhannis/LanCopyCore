@@ -53,9 +53,9 @@ public class TlsWrapper extends CommChannel {
 
             SSLEngine engine = dataOwner.tlsContext.sslContext.createSSLEngine();
             engine.setUseClientMode(true);
-            // Since we control both client and server, I'm restricting protocols to TLSv1.3 alone
-            //TODO Optionize?
-            engine.setEnabledProtocols(new String[]{"TLSv1.3"});
+            // Since we control both client and server, I'm restricting protocols to the specific optioned version (TLSv1.3 by default)
+            String protocol = (String) dataOwner.options.getOrDefault("Security.PROTOCOL", "TLSv1.3");
+            engine.setEnabledProtocols(new String[]{protocol});
             ClientTlsChannel.Builder builder = ClientTlsChannel.newBuilder(subchannel, engine);
 
             TlsChannel tlsChannel = builder.build();
@@ -92,9 +92,9 @@ public class TlsWrapper extends CommChannel {
                         } else {
                             se.setWantClientAuth(true);
                         }
-                        // Since we control both client and server, I'm restricting protocols to TLSv1.3 alone
-                        //TODO Optionize?
-                        se.setEnabledProtocols(new String[] {"TLSv1.3"});
+                        // Since we control both client and server, I'm restricting protocols to the specific optioned version (TLSv1.3 by default)
+                        String protocol = (String) dataOwner.options.getOrDefault("Security.PROTOCOL", "TLSv1.3");
+                        se.setEnabledProtocols(new String[] {protocol});
                         return se;
                     }).withSessionInitCallback(session -> {
                         System.out.println("TlsWrapper session init");

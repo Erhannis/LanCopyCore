@@ -1,24 +1,26 @@
 package com.erhannis.lancopy.refactor2.tls;
 
+import com.erhannis.mathnstuff.MeUtils;
 import java.io.File;
+import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.math.BigInteger;
-import java.net.Socket;
 import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
 import java.security.GeneralSecurityException;
+import java.security.InvalidKeyException;
 import java.security.Key;
 import java.security.KeyPair;
 import java.security.KeyPairGenerator;
 import java.security.KeyStore;
 import java.security.KeyStoreException;
 import java.security.NoSuchAlgorithmException;
-import java.security.Principal;
+import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
+import java.security.Provider;
 import java.security.SecureRandom;
+import java.security.SignatureException;
 import java.security.cert.CertPathValidatorException;
 import java.security.cert.Certificate;
 import java.security.cert.CertificateException;
@@ -27,19 +29,27 @@ import java.util.Arrays;
 import java.util.Date;
 import java.util.HashMap;
 import java.util.UUID;
-import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.net.ssl.KeyManager;
+import javax.naming.InvalidNameException;
+import javax.naming.ldap.LdapName;
+import javax.naming.ldap.Rdn;
 import javax.net.ssl.KeyManagerFactory;
 import javax.net.ssl.SSLContext;
 import javax.net.ssl.TrustManager;
 import javax.net.ssl.TrustManagerFactory;
-import javax.net.ssl.X509ExtendedKeyManager;
 import javax.net.ssl.X509TrustManager;
 import jcsp.lang.ChannelOutputInt;
 import org.apache.commons.codec.digest.DigestUtils;
+import org.spongycastle.cert.X509CertificateHolder;
+import org.spongycastle.cert.X509v3CertificateBuilder;
+import org.spongycastle.cert.jcajce.JcaX509CertificateConverter;
+import org.spongycastle.cert.jcajce.JcaX509v3CertificateBuilder;
+import org.spongycastle.jce.provider.BouncyCastleProvider;
+import org.spongycastle.operator.ContentSigner;
+import org.spongycastle.operator.OperatorCreationException;
+import org.spongycastle.operator.jcajce.JcaContentSignerBuilder;
 import sun.security.x509.AlgorithmId;
 import sun.security.x509.CertificateAlgorithmId;
 import sun.security.x509.CertificateSerialNumber;
@@ -59,12 +69,14 @@ public class ContextFactory {
     }
     
 
-    public static synchronized Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException {
+    public static synchronized Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException, OperatorCreationException, InvalidNameException {
         //TODO Optionize some of these things?  Passwords, 
         
         Context ctx = new Context();
         
         ctx.sslContext = SSLContext.getInstance(protocol);
+        
+        SecureRandom sr = new SecureRandom();
         
         // Keystore
         KeyStore ks = KeyStore.getInstance("PKCS12");
@@ -79,7 +91,8 @@ public class ContextFactory {
             
             ks.load(null, "password".toCharArray());
             //X509Certificate cert = generateCertificate("CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, 1000, "SHA384withRSA");
-            X509Certificate cert = generateCertificate("CN="+UUID.randomUUID()+", OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, 1000, "SHA384withRSA");
+            //X509Certificate cert = generateCertificate("CN="+UUID.randomUUID()+", OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, 1000, "SHA384withRSA");
+            X509Certificate cert = generateCertificateObject("CN="+UUID.randomUUID()+", OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, sr, new Date(System.currentTimeMillis()-(1000L*60*60*24)), new Date(System.currentTimeMillis()+(1000L*60*60*24*365*2)), "SHA384withRSA");
             ks.setKeyEntry("node", pvt, "password".toCharArray(), new Certificate[]{cert});
             FileOutputStream fos = new FileOutputStream(ksFile);
             ks.store(fos, "password".toCharArray());
@@ -99,7 +112,8 @@ public class ContextFactory {
             ts.load(null, "password".toCharArray());
             // Like, I'm tempted to store our own public key, but that'd mean automatically trusting communications which claim to come from OURSELF, which feels weeeeird....
             // And if I just leave the truststore empty, the code that uses it throws a weird exception.
-            X509Certificate cert = generateCertificate("CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, 1000, "SHA384withRSA");
+            //X509Certificate cert = generateCertificate("CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, 1000, "SHA384withRSA");
+            X509Certificate cert = generateCertificateObject("CN=Unknown, OU=Unknown, O=Unknown, L=Unknown, ST=Unknown, C=Unknown", kp, sr, new Date(System.currentTimeMillis()-(1000L*60*60*24)), new Date(System.currentTimeMillis()+(1000L*60*60*24*365*2)), "SHA384withRSA");
             // Note that it's setKeyEntry for keystores and setCertificateEntry for truststores.  You can also use: ts.setEntry("dummy", new KeyStore.TrustedCertificateEntry(cert), null);
             ts.setCertificateEntry("dummy", cert);
             FileOutputStream fos = new FileOutputStream(tsFile);
@@ -108,7 +122,7 @@ public class ContextFactory {
             fos.close();
         }
         
-        try (InputStream keystoreFile = Files.newInputStream(ksFile.toPath()) ; InputStream truststoreFile = Files.newInputStream(tsFile.toPath())) {
+        try (InputStream keystoreFile = new FileInputStream(ksFile) ; InputStream truststoreFile = new FileInputStream(tsFile)) {
             // (Re)load ks/ts
             ks.load(keystoreFile, "password".toCharArray());
             KeyManagerFactory kmf = KeyManagerFactory.getInstance(KeyManagerFactory.getDefaultAlgorithm());
@@ -119,16 +133,25 @@ public class ContextFactory {
             
             Certificate cert = ks.getCertificate("node");
             if (cert instanceof X509Certificate) {
-                X500Name x500Name = new X500Name(((X509Certificate)cert).getSubjectX500Principal().getName());
-                String cn = x500Name.getCommonName();
-                ctx.id = cn;
+                String dn = ((X509Certificate)cert).getSubjectX500Principal().getName();
+                LdapName ldapDN = new LdapName(dn);
+                for (Rdn rdn: ldapDN.getRdns()) {
+                    System.out.println(rdn.getType() + " -> " + rdn.getValue());
+                    if ("CN".equals(rdn.getType())) {
+                        ctx.id = ""+rdn.getValue();
+                        break;
+                    }
+                }
+                if (ctx.id == null) {
+                    System.err.println("CN not found for 'node', failed to recover ID");
+                }
             } else {
                 System.err.println("Failed to find cert for 'node', failed to recover ID");
                 ctx.id = null;
             }
 
 
-            ctx.sha256Fingerprint = DigestUtils.sha256Hex(ks.getCertificate("node").getEncoded());
+            ctx.sha256Fingerprint = MeUtils.bytesToHex(DigestUtils.sha256(ks.getCertificate("node").getEncoded()));
             
             HashMap<String, Boolean> trustCache = new HashMap<>();
             
@@ -234,6 +257,7 @@ public class ContextFactory {
      * @param days how many days from now the Certificate is valid for
      * @param algorithm the signing algorithm, eg "SHA1withRSA"
      */
+    /*
     public static X509Certificate generateCertificate(String dn, KeyPair pair, int days, String algorithm) throws GeneralSecurityException, IOException {
         PrivateKey privkey = pair.getPrivate();
         X509CertInfo info = new X509CertInfo();
@@ -262,5 +286,23 @@ public class ContextFactory {
         cert = new X509CertImpl(info);
         cert.sign(privkey, algorithm);
         return cert;
-    }    
+    }
+    */
+    
+    // https://stackoverflow.com/a/59331561/513038
+    private static final Provider provider = new BouncyCastleProvider();
+    public static X509Certificate generateCertificateObject(String fqdn, KeyPair keypair, SecureRandom random, Date notBefore, Date notAfter, String algorithm) throws CertificateException, NoSuchAlgorithmException, InvalidKeyException, NoSuchProviderException, SignatureException, OperatorCreationException {
+        PrivateKey key = keypair.getPrivate();
+
+        // Prepare the information required for generating an X.509 certificate.
+        org.spongycastle.asn1.x500.X500Name owner = new org.spongycastle.asn1.x500.X500Name(fqdn);
+        X509v3CertificateBuilder builder = new JcaX509v3CertificateBuilder(owner, new BigInteger(64, random), notBefore, notAfter, owner, keypair.getPublic());
+
+        ContentSigner signer = new JcaContentSignerBuilder(algorithm).build(key); // ex: SHA256WithRSAEncryption
+        X509CertificateHolder certHolder = builder.build(signer);
+        X509Certificate cert = new JcaX509CertificateConverter().setProvider(provider).getCertificate(certHolder);
+        cert.verify(keypair.getPublic());
+        
+        return cert;
+    }
 }
