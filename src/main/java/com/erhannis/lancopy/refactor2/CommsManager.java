@@ -331,7 +331,7 @@ public class CommsManager implements CSProcess {
                         boolean plainHttpEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.enabled", false);
                         int plainHttpPort = (int) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.port", 12111);
                         boolean plainHttpRequireCert = (boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.require_cert", false);
-                        boolean plainHttpConfirm = (boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.show_confirmation", false);
+                        boolean plainHttpConfirm = (boolean) dataOwner.options.getOrDefault("Comms.tcp.unauth_http.show_confirmation", true);
                         if (plainHttpEnabled) {
                             System.out.println("CMPH opening ssc");
                             ServerSocketChannel ss = ServerSocketChannel.open();

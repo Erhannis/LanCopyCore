@@ -193,4 +193,4 @@ TODO
   note: if incoming connection from firewalled, NM temporarily deadlocks trying to connect, until fail
     let incoming, or existing, connection count?
   socket timeouts?
-
+  UnicodeString flavor not supported???
