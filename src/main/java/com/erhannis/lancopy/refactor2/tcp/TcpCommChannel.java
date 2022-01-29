@@ -69,6 +69,7 @@ public class TcpCommChannel extends CommChannel {
         }
         
         public abstract void run() throws IOException;
+        public abstract void close() throws IOException;
     }
     
     /**
@@ -91,6 +92,11 @@ public class TcpCommChannel extends CommChannel {
                     incomingConnectionOut.write(new TcpCommChannel(sc));
                 }
             }            
+
+            @Override
+            public void close() throws IOException {
+                ss.close();
+            }
         };
     }
     

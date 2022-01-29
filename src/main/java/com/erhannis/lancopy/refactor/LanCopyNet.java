@@ -18,6 +18,7 @@ import java.util.UUID;
 import java.util.function.Function;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
+import jcsp.helpers.NameParallel;
 import jcsp.helpers.SynchronousSplitter;
 import jcsp.lang.Alternative;
 import jcsp.lang.AltingChannelInput;
@@ -84,7 +85,7 @@ public class LanCopyNet {
         
         //TODO Allow specified broadcast addresses?
         
-        new ProcessManager(new Parallel(new CSProcess[]{
+        new ProcessManager(new NameParallel(new CSProcess[]{
             adUpdatedSplitter,
             summaryUpdatedSplitter,
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),

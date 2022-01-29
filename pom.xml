@@ -97,9 +97,10 @@
             <version>2.3.1</version>
         </dependency>
         <dependency>
+            <!-- I patched this version to work with Android 6.0.1: https://github.com/Erhannis/tls-channel/tree/feature/android_support -->
             <groupId>com.github.marianobarrios</groupId>
             <artifactId>tls-channel</artifactId>
-            <version>0.5.1</version>
+            <version>0.7.0-SNAPSHOT</version>
         </dependency>
     </dependencies>
 </project>

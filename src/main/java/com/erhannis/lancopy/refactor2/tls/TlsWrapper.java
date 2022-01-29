@@ -70,11 +70,13 @@ public class TlsWrapper extends CommChannel {
             AltingChannelInputInt madeConnectionIn = madeConnectionChannel.in();
             ChannelOutputInt madeConnectionOut = JcspUtils.logDeadlock(madeConnectionChannel.out());
                         
-            final long fingerprintPromptDelay = (long) dataOwner.options.getOrDefault("TlsWrapper.fingerprint_prompt_delay", 500L);
+            final long fingerprintPromptDelay = (long) dataOwner.options.getOrDefault("TlsWrapper.fingerprint_prompt_delay", 1500L);
             new ProcessManager(() -> {
                 try {
+                    System.out.println(System.currentTimeMillis() + " TlsWrapper start wait " + TlsWrapper.this);
                     Thread.sleep(fingerprintPromptDelay);
                     if (!madeConnectionIn.pending()) {
+                        System.out.println(System.currentTimeMillis() + " TlsWrapper delay -> show fingerprint " + TlsWrapper.this);
                         showLocalFingerprintOut.write(1);
                     }
                 } catch (InterruptedException ex) {
@@ -83,7 +85,8 @@ public class TlsWrapper extends CommChannel {
             }).start();
             
             // create TlsChannel builder, combining the raw channel and the SSLEngine, using minimal options
-            ServerTlsChannel.Builder builder = ServerTlsChannel.newBuilder(subchannel, dataOwner.tlsContext.sslContext)
+             System.out.println(System.currentTimeMillis() + " TlsWrapper build STC " + TlsWrapper.this);
+             ServerTlsChannel.Builder builder = ServerTlsChannel.newBuilder(subchannel, dataOwner.tlsContext.sslContext)
                     .withEngineFactory(sc -> {
                         SSLEngine se = dataOwner.tlsContext.sslContext.createSSLEngine();
                         se.setUseClientMode(false);
@@ -97,7 +100,7 @@ public class TlsWrapper extends CommChannel {
                         se.setEnabledProtocols(new String[] {protocol});
                         return se;
                     }).withSessionInitCallback(session -> {
-                        System.out.println("TlsWrapper session init");
+                        System.out.println(System.currentTimeMillis() + " TlsWrapper session init " + TlsWrapper.this);
                         madeConnectionOut.write(1);
                     });
 

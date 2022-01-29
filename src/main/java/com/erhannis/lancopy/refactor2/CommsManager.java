@@ -53,6 +53,7 @@ import java.util.logging.Logger;
 import jcsp.helpers.BackpressureRegulator;
 import jcsp.helpers.FCClient;
 import jcsp.helpers.JcspUtils;
+import jcsp.helpers.NameParallel;
 import jcsp.helpers.SynchronousSplitter;
 import jcsp.helpers.TCServer.TaskItem;
 import jcsp.lang.Alternative;
@@ -248,20 +249,23 @@ public class CommsManager implements CSProcess {
         }
         
         //TODO Move these somewhere else?  Abstract?
-        new ProcessManager(new Parallel(new CSProcess[] {
+        new ProcessManager(new NameParallel(new CSProcess[] {
             this.broadcastMsgSplitter,
             this.txMsgSplitter,
             
             // TCP
-            () -> { // TCP server listener
+            () -> {
+                Thread.currentThread().setName("TCP server listener");
+                
                 //TODO Fallback to "Comms.tcp.enabled"?
                 boolean tcpEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.server_enabled", true);
 
                 if (tcpEnabled) {
                     int port = (int) dataOwner.options.getOrDefault("Comms.tcp.server_port", 0);
+                    TcpCommChannel.ServerThread st = null;
                     try {
-                        TcpCommChannel.ServerThread st = TcpCommChannel.serverThread(internalCommChannelOut, port);
-                        System.out.println("CommsManager.TCP " + dataOwner.ID + " bound to port " + port);
+                        st = TcpCommChannel.serverThread(internalCommChannelOut, port);
+                        System.out.println("CommsManager.TCP " + dataOwner.ID + " bound to port " + st.boundPort);
 
                         // Determine Comms
                         //TODO Allow whitelist/blacklist interfaces
@@ -283,7 +287,11 @@ public class CommsManager implements CSProcess {
                         
                         //TODO Likewise
                         // Also, this is weirdly unrelated to the other stuff in this block
-                        JmDNSProcess.start(dataOwner, st.boundPort, radOut);
+                        try {
+                            JmDNSProcess.start(dataOwner, st.boundPort, radOut);
+                        } catch (Throwable t) {
+                            t.printStackTrace();
+                        }
                         
                         while (true) {
                             try {
@@ -295,16 +303,25 @@ public class CommsManager implements CSProcess {
                         }
                     } catch (IOException ex) {
                         Logger.getLogger(CommsManager.class.getName()).log(Level.SEVERE, null, ex);
+                    } finally {
+                        if (st != null) {
+                            try {
+                                st.close();
+                            } catch (Throwable t) {
+                            }
+                        }
                     }
                 }
             },
             new TcpBroadcastBroadcastReceiver(broadcastPort, internalRxBroadcastOut), //TODO Make channel poisonable, for closing?
-            new Parallel(tbbts.toArray(new CSProcess[0])),
+            new NameParallel(tbbts.toArray(new CSProcess[0])),
             new TcpMulticastBroadcastReceiver(ipv4MulticastPort, ipv4MulticastAddress, internalRxBroadcastOut), //TODO Ditto
             new TcpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
             new TcpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut), //TODO Ditto
             new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
-            () -> { // Traditional HTTP, manual url
+            () -> {
+                Thread.currentThread().setName("Traditional HTTP, manual url");
+                
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
                 //       And should probably be a class in its own right.
                 while (true) {
@@ -561,7 +578,7 @@ public class CommsManager implements CSProcess {
                                 
                                 for (Object a : l) {
                                     if (!(a instanceof Advertisement)) {
-                                        throw new IllegalArgumentException("CWS rx list not of Advertisement");
+                                        throw new IllegalArgumentException("CM rx list not of Advertisement");
                                     }
                                     radOut.write((Advertisement)a);
                                 }

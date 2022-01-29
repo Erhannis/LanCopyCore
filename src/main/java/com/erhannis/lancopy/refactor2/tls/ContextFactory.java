@@ -184,7 +184,7 @@ public class ContextFactory {
                 private boolean handleCertFailure(CertificateException e, X509Certificate[] chain, String authType) throws CertificateException {
                     synchronized (trustCache) {
                         Throwable cause = e.getCause();
-                        String fingerprint = DigestUtils.sha256Hex(chain[0].getEncoded());
+                        String fingerprint = MeUtils.bytesToHex(DigestUtils.sha256(chain[0].getEncoded()));
                         if (trustCache.containsKey(fingerprint)) {
                             if (trustCache.get(fingerprint)) {
                                 return false;
@@ -193,19 +193,52 @@ public class ContextFactory {
                             }
                         }
                         boolean askAccept = false;
+                        boolean processed = false;
                         StringBuilder sb = new StringBuilder();
-                        if (cause instanceof sun.security.provider.certpath.SunCertPathBuilderException) {
-                            sb.append("This certificate id has not been recorded.\n");
-                            sb.append(fingerprint+"\n");
-                            sb.append("Trust it and record it?");
-                            askAccept = true;
-                        } else if (CertPathValidatorException.BasicReason.INVALID_SIGNATURE == (((java.security.cert.CertPathValidatorException)cause).getReason())) {
-                            //TODO Is this the only reason/exception we care about?
-                            sb.append("THIS CERTIFICATE IS DIFFERENT FROM THE ONE ON RECORD.\n");
-                            sb.append(fingerprint+"\n");
-                            sb.append("Trust it and overwrite the old one?");
-                            askAccept = true;
-                        } else {
+                        processing: {
+                            //TODO Are there other reasons we care about?
+                            try {
+                                if (cause instanceof sun.security.provider.certpath.SunCertPathBuilderException) {
+                                    sb.append("This certificate id has not been recorded.\n");
+                                    sb.append(fingerprint+"\n");
+                                    sb.append("Trust it and record it?");
+                                    askAccept = true;
+                                }
+                                processed = true;
+                                break processing;
+                            } catch (NoClassDefFoundError t) {
+                                // Probably on Android or something
+                            }
+                            try {
+                                if (CertPathValidatorException.BasicReason.INVALID_SIGNATURE == (((java.security.cert.CertPathValidatorException)cause).getReason())) {
+                                    sb.append("THIS CERTIFICATE IS DIFFERENT FROM THE ONE ON RECORD.\n");
+                                    sb.append(fingerprint+"\n");
+                                    sb.append("Trust it and overwrite the old one?");
+                                    askAccept = true;
+                                } else {
+                                    throw e;
+                                }
+                                processed = true;
+                                break processing;
+                            } catch (NoClassDefFoundError t) {
+                                // Probably on a particular VERSION of Android...
+                            }
+                            {
+                                if (cause instanceof java.security.cert.CertPathValidatorException) {
+                                    sb.append("SECURITY WARNING - most likely unfamiliar ID and certificate.\n");
+                                    sb.append("Error message: " + cause.getMessage() + "\n");
+                                    sb.append("Fingerprint:\n");
+                                    sb.append(fingerprint+"\n");
+                                    sb.append("Trust it and record it?");
+                                    askAccept = true;
+                                } else {
+                                    throw e;
+                                }
+                                processed = true;
+                                break processing;
+                            }
+                        }
+                        if (!processed) {
                             throw e;
                         }
                         if (askAccept) {
