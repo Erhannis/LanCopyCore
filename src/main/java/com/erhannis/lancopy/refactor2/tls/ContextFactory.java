@@ -203,9 +203,9 @@ public class ContextFactory {
                                     sb.append(fingerprint+"\n");
                                     sb.append("Trust it and record it?");
                                     askAccept = true;
+                                    processed = true;
+                                    break processing;
                                 }
-                                processed = true;
-                                break processing;
                             } catch (NoClassDefFoundError t) {
                                 // Probably on Android or something
                             }
@@ -215,13 +215,13 @@ public class ContextFactory {
                                     sb.append(fingerprint+"\n");
                                     sb.append("Trust it and overwrite the old one?");
                                     askAccept = true;
+                                    processed = true;
+                                    break processing;
                                 } else {
-                                    throw e;
+                                    // Probably on a particular VERSION of Android...
                                 }
-                                processed = true;
-                                break processing;
                             } catch (NoClassDefFoundError t) {
-                                // Probably on a particular VERSION of Android...
+                                // There's probably a hundred variations of Android, and who wants to bet they all do something weird and different here
                             }
                             {
                                 if (cause instanceof java.security.cert.CertPathValidatorException) {
@@ -231,11 +231,11 @@ public class ContextFactory {
                                     sb.append(fingerprint+"\n");
                                     sb.append("Trust it and record it?");
                                     askAccept = true;
+                                    processed = true;
+                                    break processing;
                                 } else {
                                     throw e;
                                 }
-                                processed = true;
-                                break processing;
                             }
                         }
                         if (!processed) {
