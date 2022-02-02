@@ -124,6 +124,12 @@ public class DataOwner {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             } catch (InvalidNameException ex) {
                 Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (NoSuchFieldException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IllegalArgumentException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
+            } catch (IllegalAccessException ex) {
+                Logger.getLogger(DataOwner.class.getName()).log(Level.SEVERE, null, ex);
             }
             this.tlsContext = ctx;
             this.ID = UUID.fromString(ctx.id);

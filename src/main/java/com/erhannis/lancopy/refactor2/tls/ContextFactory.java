@@ -6,6 +6,7 @@ import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
+import java.lang.reflect.Field;
 import java.math.BigInteger;
 import java.nio.file.Files;
 import java.security.GeneralSecurityException;
@@ -20,6 +21,8 @@ import java.security.NoSuchProviderException;
 import java.security.PrivateKey;
 import java.security.Provider;
 import java.security.SecureRandom;
+import java.security.SecureRandomSpi;
+import java.security.Security;
 import java.security.SignatureException;
 import java.security.cert.CertPathValidatorException;
 import java.security.cert.Certificate;
@@ -47,6 +50,7 @@ import org.spongycastle.cert.X509v3CertificateBuilder;
 import org.spongycastle.cert.jcajce.JcaX509CertificateConverter;
 import org.spongycastle.cert.jcajce.JcaX509v3CertificateBuilder;
 import org.spongycastle.jce.provider.BouncyCastleProvider;
+import org.spongycastle.jsse.provider.BouncyCastleJsseProvider;
 import org.spongycastle.operator.ContentSigner;
 import org.spongycastle.operator.OperatorCreationException;
 import org.spongycastle.operator.jcajce.JcaContentSignerBuilder;
@@ -69,15 +73,27 @@ public class ContextFactory {
     }
     
 
-    public static synchronized Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException, OperatorCreationException, InvalidNameException {
+    public static synchronized Context authenticatedContext(String protocol, String keystore, String truststore, Function<String, Boolean> trustCallback, ChannelOutputInt showLocalFingerprintOut) throws GeneralSecurityException, IOException, OperatorCreationException, InvalidNameException, NoSuchFieldException, IllegalArgumentException, IllegalAccessException {
         //TODO Optionize some of these things?  Passwords, 
         
         Context ctx = new Context();
-        
-        ctx.sslContext = SSLContext.getInstance(protocol);
-        
+
         SecureRandom sr = new SecureRandom();
         
+        Field fsrs = SecureRandom.class.getDeclaredField("secureRandomSpi");
+        fsrs.setAccessible(true);
+        Object srs = fsrs.get(sr);
+        String srsClazz = srs.getClass().getName();
+        
+        Provider dummyProvider = new Provider("DummyProvider", 1.0, "Dummy provider"){
+        };
+        dummyProvider.put("SecureRandom.DEFAULT", srsClazz);
+        Security.addProvider(dummyProvider);
+        
+        Security.insertProviderAt(new BouncyCastleJsseProvider(), 1);
+        Security.insertProviderAt(new BouncyCastleProvider(), 1);
+        ctx.sslContext = SSLContext.getInstance(protocol);
+
         // Keystore
         KeyStore ks = KeyStore.getInstance("PKCS12");
         File ksFile =  new File(keystore);
@@ -197,6 +213,18 @@ public class ContextFactory {
                         StringBuilder sb = new StringBuilder();
                         processing: {
                             //TODO Are there other reasons we care about?
+                            try {
+                                if (cause instanceof java.security.cert.CertPathBuilderException) {
+                                    sb.append("This certificate id has not been recorded.\n");
+                                    sb.append(fingerprint+"\n");
+                                    sb.append("Trust it and record it?");
+                                    askAccept = true;
+                                    processed = true;
+                                    break processing;
+                                }
+                            } catch (NoClassDefFoundError t) {
+                                // Probably on Android or something
+                            }
                             try {
                                 if (cause instanceof sun.security.provider.certpath.SunCertPathBuilderException) {
                                     sb.append("This certificate id has not been recorded.\n");
