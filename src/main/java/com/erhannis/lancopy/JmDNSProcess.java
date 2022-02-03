@@ -87,9 +87,12 @@ public class JmDNSProcess {
         Zeroconf zeroconf0 = null;
         Service zcService0 = null;
         try {
+            boolean ipv4 = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.zeroconf.ipv4.enabled", true);
+            boolean ipv6 = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.zeroconf.ipv6.enabled", true);
+            
             zeroconf0 = new Zeroconf();
-            zeroconf0.setUseIpv4(true)
-                    .setUseIpv6(true) //TODO Do?
+            zeroconf0.setUseIpv4(ipv4)
+                    .setUseIpv6(ipv6) //TODO Do?
                     .addAllNetworkInterfaces();
 
             //if (1==1) throw new RuntimeException("//TODO BROKEN");
