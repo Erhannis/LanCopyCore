@@ -190,7 +190,7 @@ TODO
   auto-reconnect?
   show history of Ads and Summarys
   add incoming to Comms ui page
-  note: if incoming connection from firewalled, NM temporarily deadlocks trying to connect, until fail
+  note: if incoming connection from firewalled, NM temporarily deadlocks trying to  connect, until fail
     let incoming, or existing, connection count?
   socket timeouts?
-
+  should e.g. QR comms be advertised?  They don't occur unless the user makes it happen....

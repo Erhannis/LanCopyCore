@@ -26,6 +26,7 @@ import java.util.List;
 import java.util.UUID;
 import java.util.logging.Level;
 import java.util.logging.Logger;
+import jcsp.helpers.NameParallel;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
@@ -44,7 +45,7 @@ public class MainTest {
         if (1 == 1) {
             final PipedInputStream pis = new PipedInputStream(1024 * 256);
             final PipedOutputStream pos = new PipedOutputStream(pis);
-            new Parallel(new CSProcess[]{
+            new NameParallel(new CSProcess[]{
                 () -> {
                     try {
                         for (int i = 0; i < 10; i++) {
@@ -150,9 +151,9 @@ public class MainTest {
         List<Comm> lComms = Lists.newArrayList(new TcpComm(null, "localhost", localPort));
         Advertisement lad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), lComms, true, null);
 
-        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null, null, null);
+        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null, null, null, null);
 
-        new ProcessManager(new Parallel(new CSProcess[]{
+        new ProcessManager(new NameParallel(new CSProcess[]{
             cm,
             () -> {
                 while (true) {

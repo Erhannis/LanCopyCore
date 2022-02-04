@@ -112,6 +112,7 @@ public class NodeManager implements CSProcess {
         
         @Override
         public void run() {
+            Thread.currentThread().setName("NM.CR " + token.nodeId + " " + token + " " + cc);
             try {
                 while (true) {
                     try {
@@ -217,6 +218,7 @@ public class NodeManager implements CSProcess {
         //TODO Allow unidirectional comms?  Except, TLS requires an exchange...  TLS on [Comm], rather than [TLS on Comm] ?
         
         System.out.println("NodeManager starting up: " + nodeId);
+        Thread.currentThread().setName("NodeManager " + nodeId);
         Alternative[] alt = new Alternative[]{regenAlt()};
         while (true) {
             try {
@@ -289,6 +291,7 @@ public class NodeManager implements CSProcess {
                         ArrayList<CSProcess> processes = new ArrayList<>();
                         for (Comm comm : comms) {
                             processes.add(() -> {
+                                Thread.currentThread().setName("NM.sub " + nodeId + " " + comm);
                                 try {
                                     CommChannel cc = comm.connect(dataOwner);
                                     if (dataOwner.encrypted) {
