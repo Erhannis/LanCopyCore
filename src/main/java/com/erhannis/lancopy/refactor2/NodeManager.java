@@ -8,6 +8,7 @@ import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.tls.TlsWrapper;
+import com.erhannis.lancopy.refactor2.tls.TlsWrapper.ClientServerMode;
 import com.erhannis.mathnstuff.Pair;
 import com.google.common.primitives.Ints;
 import java.io.IOException;
@@ -241,7 +242,7 @@ public class NodeManager implements CSProcess {
                                 //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
                                 //TODO Verify cert matches id
                                 // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
-                                cc = new TlsWrapper(dataOwner, false, true, cc, showLocalFingerprintOut);
+                                cc = new TlsWrapper(dataOwner, ClientServerMode.HAGGLE, true, cc, showLocalFingerprintOut);
                             }
                             ChannelReader cr = new ChannelReader(cc, nodeId);
                             new ProcessManager(cr).start();
@@ -298,7 +299,7 @@ public class NodeManager implements CSProcess {
                                         //TODO Are interrupts still a thing?
                                         //TODO Verify cert matches id
                                         // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
-                                        cc = new TlsWrapper(dataOwner, true, true, cc, showLocalFingerprintOut);
+                                        cc = new TlsWrapper(dataOwner, ClientServerMode.HAGGLE, true, cc, showLocalFingerprintOut);
                                     }
                                     ChannelReader cr = new ChannelReader(cc, nodeId);
                                     new ProcessManager(cr).start();

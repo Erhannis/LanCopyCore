@@ -335,7 +335,7 @@ public class CommsManager implements CSProcess {
 
                                 if (!plainHttpConfirm || confirmationClient.call("Incoming plain http(s) connection.  Accept?")) {
                                     CommChannel subchannel = new TcpCommChannel(sc);
-                                    TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, false, plainHttpRequireCert, subchannel, showLocalFingerprintOut);
+                                    TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, TlsWrapper.ClientServerMode.SERVER, plainHttpRequireCert, subchannel, showLocalFingerprintOut);
                                     CommChannel channel = tlsWrapper;
                                     //CommChannel channel = subchannel;
 

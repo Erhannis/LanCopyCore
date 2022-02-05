@@ -5,6 +5,8 @@
 package com.erhannis.lancopy.refactor2.qr;
 
 import com.erhannis.lancopy.DataOwner;
+import com.erhannis.lancopy.refactor2.CommChannel;
+import com.erhannis.lancopy.refactor2.tls.TlsWrapper;
 import com.erhannis.mathnstuff.components.ImagePanel;
 import com.github.sarxos.webcam.Webcam;
 import com.github.sarxos.webcam.WebcamPanel;
@@ -27,6 +29,7 @@ import java.awt.Graphics2D;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
+import java.io.IOException;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
 import java.util.Arrays;
@@ -43,6 +46,7 @@ import jcsp.lang.CSProcess;
 import jcsp.lang.CSTimer;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
+import jcsp.lang.ChannelOutputInt;
 import jcsp.lang.Guard;
 import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
@@ -54,12 +58,12 @@ import jcsp.util.OverWriteOldestBuffer;
  */
 public class QRCommFrame extends javax.swing.JFrame {
 
-    public final QRCommChannel channel;
+    public final CommChannel channel;
 
     /**
      * Creates new form QRCommFrame
      */
-    public QRCommFrame(DataOwner dataOwner, QRComm comm) {
+    public QRCommFrame(DataOwner dataOwner, QRComm comm) throws IOException {
         initComponents();
 
         Webcam webcam = Webcam.getDefault();
