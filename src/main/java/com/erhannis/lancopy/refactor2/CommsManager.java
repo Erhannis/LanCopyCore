@@ -435,7 +435,7 @@ public class CommsManager implements CSProcess {
                     }
                     case 1: { // lsumIn
                         Summary summary = lsumIn.read();
-                        byte[] msg = dataOwner.serialize(summary);
+                        byte[] msg = dataOwner.serialize(logSend(summary));
                         this.txMsgSplitter.write(msg);
                         break;
                     }
@@ -453,9 +453,9 @@ public class CommsManager implements CSProcess {
                             }
                             nodes.get(id).subscribeOut.write(separated.get(id));
                             // This might only be necessary on startNodeManager, but for robustness it shouldn't hurt to leave it here
-                            nodes.get(id).txMsgOut.write(dataOwner.serialize(aadClient.call(dataOwner.ID)));
-                            nodes.get(id).txMsgOut.write(dataOwner.serialize(summaryClient.call(dataOwner.ID)));
-                            nodes.get(id).txMsgOut.write(dataOwner.serialize(rosterClient.call(null)));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(aadClient.call(dataOwner.ID))));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(summaryClient.call(dataOwner.ID))));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(rosterClient.call(null))));
                         }
                         break;
                     }
@@ -587,9 +587,9 @@ public class CommsManager implements CSProcess {
                         }
                         nodes.get(id).channelReaderShuffleBOut.write(cr);
                         // This might only be necessary on startNodeManager, but for robustness it shouldn't hurt to leave it here
-                        nodes.get(id).txMsgOut.write(dataOwner.serialize(aadClient.call(dataOwner.ID)));
-                        nodes.get(id).txMsgOut.write(dataOwner.serialize(summaryClient.call(dataOwner.ID)));
-                        nodes.get(id).txMsgOut.write(dataOwner.serialize(rosterClient.call(null)));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(aadClient.call(dataOwner.ID))));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(summaryClient.call(dataOwner.ID))));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(rosterClient.call(null))));
                         break;
                     }
                     case 5: { // internalCommStatusIn
@@ -625,7 +625,7 @@ public class CommsManager implements CSProcess {
                         TaskItem<UUID, Pair<String, InputStream>> task = dataServer.read();
                         NodeManager.NMInterface nm = nodes.get(task.val);
                         DataRequestMessage drm = new DataRequestMessage();
-                        byte[] msg = dataOwner.serialize(drm);
+                        byte[] msg = dataOwner.serialize(logSend(drm));
                         nm.txMsgOut.write(msg);
                         incomingTransfers.put(drm.correlationId, new IncomingTransferState(null, task));
                         break;
@@ -676,11 +676,11 @@ public class CommsManager implements CSProcess {
                             if (state.index == 0) {
                                 DataStartMessage dsm = new DataStartMessage(correlationId, state.mimeType, data, eom);
                                 System.out.println("CM tx " + dsm);
-                                msg = dataOwner.serialize(dsm);
+                                msg = dataOwner.serialize(logSend(dsm));
                             } else {
                                 DataChunkMessage dcm = new DataChunkMessage(correlationId, state.index, data, eom);
                                 System.out.println("CM tx " + dcm);
-                                msg = dataOwner.serialize(dcm);
+                                msg = dataOwner.serialize(logSend(dcm));
                             }
                             nm.txMsgOut.write(msg);
                             somethingSent = true;
@@ -708,5 +708,10 @@ public class CommsManager implements CSProcess {
                 t.printStackTrace();
             }
         }
+    }
+    
+    private static <T> T logSend(T o) {
+        System.out.println("CM sending " + o);
+        return o;
     }
 }

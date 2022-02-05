@@ -250,7 +250,7 @@ public class NodeManager implements CSProcess {
                             // Send self-identification
                             try {
                                 //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
-                                byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                byte[] msg = dataOwner.serialize(logSend(new IdentificationMessage(dataOwner.ID)));
                                 cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
                                 cr.cc.write(ByteBuffer.wrap(msg));
 
@@ -307,7 +307,7 @@ public class NodeManager implements CSProcess {
                                     // Send self-identification
                                     try {
                                         //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
-                                        byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                        byte[] msg = dataOwner.serialize(logSend(new IdentificationMessage(dataOwner.ID)));
                                         cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
                                         cr.cc.write(ByteBuffer.wrap(msg));
 
@@ -468,5 +468,10 @@ public class NodeManager implements CSProcess {
                 t.printStackTrace();
             }
         }
+    }
+    
+    private static <T> T logSend(T o) {
+        System.out.println("NM sending " + o);
+        return o;
     }
 }

@@ -71,6 +71,7 @@ public class QRCommChannel extends CommChannel {
                 int MAX = (Integer) dataOwner.options.getOrDefault("Comms.qr.MAX_BYTES", 512); // Excluding header
                 int n = Math.min(src.remaining(), MAX);
                 byte[] chunk = new byte[n];
+                src.get(chunk);
                 txBytesOut.write(chunk);
                 total += n;
             }

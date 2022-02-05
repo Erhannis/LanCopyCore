@@ -23,11 +23,14 @@ import com.google.zxing.common.BitMatrix;
 import com.google.zxing.common.HybridBinarizer;
 import com.google.zxing.qrcode.QRCodeReader;
 import java.awt.Dimension;
+import java.awt.Graphics2D;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.image.BufferedImage;
 import java.nio.charset.Charset;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Random;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.swing.JOptionPane;
@@ -63,13 +66,13 @@ public class QRCommFrame extends javax.swing.JFrame {
         Dimension[] ds = webcam.getViewSizes();
         webcam.setViewSize(ds[ds.length - 1]);
         webcam.open();
-        jSplitPane2.setRightComponent(new WebcamPanel(webcam));
+        jSplitPane1.setLeftComponent(new WebcamPanel(webcam));
+        jSplitPane1.setDividerLocation(100);
 
 
         //DO Resize/scale
         final ImagePanel qrImagePanel = new ImagePanel();
-        jSplitPane1.setDividerLocation(100);
-        jSplitPane1.setRightComponent(qrImagePanel);
+        jSplitPane2.setRightComponent(qrImagePanel);
         qrImagePanel.invalidate();
 
         
@@ -96,30 +99,39 @@ public class QRCommFrame extends javax.swing.JFrame {
         ChannelOutput<String> statusOut = JcspUtils.logDeadlock(statusChannel.out());
         
         
+        String[] lastStatus = {"None"};
+        
         this.channel = new QRCommChannel(dataOwner, txBytesOut, rxBytesIn, comm);
         new ProcessManager(new NameParallel(new CSProcess[]{
             new QRProcess(txBytesIn, txQrOut, rxBytesOut, rxQrIn, statusOut),
             
-            () -> { // Camera loop
+            () -> {
+                Thread.currentThread().setName("QR Camera loop");
                 CSTimer timer = new CSTimer();
                 while (true) {
                     if (!webcam.isOpen()) {
                         timer.sleep(200);
+                        taStatus.setText(lastStatus[0] + "\n" + "camera not open");
                         continue;
                     }
                     BufferedImage image = webcam.getImage();
                     if (image == null) {
+                        taStatus.setText(lastStatus[0] + "\n" + "no image");
                         continue;
                     }
 
                     Result result = null;
                     try {
                         result = new QRCodeReader().decode(new BinaryBitmap(new HybridBinarizer(new BufferedImageLuminanceSource(image))));
+                        taStatus.setText(lastStatus[0] + "\n" + "qr visible");
                     } catch (NotFoundException e) {
+                        taStatus.setText(lastStatus[0] + "\n" + "qr not visible 1");
                         continue;
                     } catch (ChecksumException ex) {
+                        taStatus.setText(lastStatus[0] + "\n" + "qr not visible 2");
                         continue;
                     } catch (FormatException ex) {
+                        taStatus.setText(lastStatus[0] + "\n" + "qr not visible 3");
                         continue;
                     }
 
@@ -129,34 +141,60 @@ public class QRCommFrame extends javax.swing.JFrame {
                             System.err.println("Got more than one segment in a qr code!!! What does it mean?!?");
                         }
                         for (byte[] segment : segments) {
+                            System.out.println("QR <-RXb " + Arrays.toString(segment));
+                            System.out.println("QR <-RXc " + new String(segment, CHARSET));
+                            
                             rxQrOut.write(segment);
                         }
                     }
                 }
             },
             
-            () -> { // Handler loop
-                Alternative alt = new Alternative(new Guard[]{txQrIn, statusIn});
+            () -> {
+                Thread.currentThread().setName("QR handler loop");
+                Random r = new Random();
+                CSTimer jitterTimer = new CSTimer();
+                // The jitter is because sometimes the reader would get stuck, and slightly moving the image unsticks it
+                jitterTimer.setAlarm(jitterTimer.read()+((Long) dataOwner.options.getOrDefault("Comms.qr.JITTER.INTERVAL",200L)));
+                BufferedImage lastTxQr = null;
+                
+                Alternative alt = new Alternative(new Guard[]{txQrIn, statusIn, jitterTimer});
                 while (true) {
                     switch (alt.priSelect()) {
                         case 0: { // txQrIn
                             byte[] qr = txQrIn.read();
+                            System.out.println("QR TXb-> " + Arrays.toString(qr));
+                            System.out.println("QR TXc-> " + new String(qr, CHARSET));
                             try {
                                 BufferedImage bi = getQR(qr);
                                 qrImagePanel.setImage(bi);
+                                lastTxQr = bi;
+                                long INTERVAL = (Long) dataOwner.options.getOrDefault("Comms.qr.JITTER.INTERVAL",200L);
+                                jitterTimer.setAlarm(jitterTimer.read()+INTERVAL);
                             } catch (WriterException ex) {
                                 Logger.getLogger(QRCommFrame.class.getName()).log(Level.SEVERE, null, ex);
                             }
                             break;
                         }
                         case 1: { // statusIn
-                            String status = statusIn.read();
-                            labelStatus.setText(status);
+                            lastStatus[0] = statusIn.read();
+                            break;
+                        }
+                        case 2: { // jitterTimer
+                            if (lastTxQr != null) {
+                                double X = (Double) dataOwner.options.getOrDefault("Comms.qr.JITTER.X",100.0);
+                                double Y = (Double) dataOwner.options.getOrDefault("Comms.qr.JITTER.Y",100.0);
+                                boolean ROTATE = (Boolean) dataOwner.options.getOrDefault("Comms.qr.JITTER.ROTATE",true);
+                                BufferedImage jittered = transform(lastTxQr, ROTATE ? r.nextInt(4) * Math.PI / 2 : 0, (r.nextDouble()*X)-(X/2), (r.nextDouble()*Y)-(Y/2));
+                                qrImagePanel.setImage(jittered);
+                            }
+                            long INTERVAL = (Long) dataOwner.options.getOrDefault("Comms.qr.JITTER.INTERVAL",200L);
+                            jitterTimer.setAlarm(jitterTimer.read()+INTERVAL);
                             break;
                         }
                     }
                 }
-            }
+            }            
         })).start();
         
         this.addWindowListener(new WindowAdapter() {
@@ -175,6 +213,22 @@ public class QRCommFrame extends javax.swing.JFrame {
         return MatrixToImageWriter.toBufferedImage(matrix);
     }
 
+    // https://stackoverflow.com/a/52663539/513038
+    public static BufferedImage transform(BufferedImage src, double angle, double tx, double ty) {
+        int width = src.getWidth();
+        int height = src.getHeight();
+
+        BufferedImage dest = new BufferedImage(height, width, src.getType());
+
+        Graphics2D graphics2D = dest.createGraphics();
+        graphics2D.translate((height - width) / 2, (height - width) / 2);
+        graphics2D.rotate(angle, height / 2, width / 2);
+        graphics2D.translate(tx, ty);
+        graphics2D.drawRenderedImage(src, null);
+
+        return dest;
+    }
+    
     /**
      * This method is called from within the constructor to initialize the form.
      * WARNING: Do NOT modify this code. The content of this method is always
@@ -186,7 +240,8 @@ public class QRCommFrame extends javax.swing.JFrame {
 
         jSplitPane1 = new javax.swing.JSplitPane();
         jSplitPane2 = new javax.swing.JSplitPane();
-        labelStatus = new javax.swing.JLabel();
+        jScrollPane1 = new javax.swing.JScrollPane();
+        taStatus = new javax.swing.JTextArea();
 
         setDefaultCloseOperation(javax.swing.WindowConstants.DISPOSE_ON_CLOSE);
 
@@ -195,28 +250,32 @@ public class QRCommFrame extends javax.swing.JFrame {
 
         jSplitPane2.setOrientation(javax.swing.JSplitPane.VERTICAL_SPLIT);
 
-        labelStatus.setText("jLabel1");
-        jSplitPane2.setTopComponent(labelStatus);
+        taStatus.setColumns(20);
+        taStatus.setRows(5);
+        jScrollPane1.setViewportView(taStatus);
 
-        jSplitPane1.setLeftComponent(jSplitPane2);
+        jSplitPane2.setTopComponent(jScrollPane1);
+
+        jSplitPane1.setRightComponent(jSplitPane2);
 
         javax.swing.GroupLayout layout = new javax.swing.GroupLayout(getContentPane());
         getContentPane().setLayout(layout);
         layout.setHorizontalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jSplitPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 841, Short.MAX_VALUE)
+            .addComponent(jSplitPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 1108, Short.MAX_VALUE)
         );
         layout.setVerticalGroup(
             layout.createParallelGroup(javax.swing.GroupLayout.Alignment.LEADING)
-            .addComponent(jSplitPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 709, Short.MAX_VALUE)
+            .addComponent(jSplitPane1, javax.swing.GroupLayout.DEFAULT_SIZE, 768, Short.MAX_VALUE)
         );
 
         pack();
     }// </editor-fold>//GEN-END:initComponents
 
     // Variables declaration - do not modify//GEN-BEGIN:variables
+    private javax.swing.JScrollPane jScrollPane1;
     private javax.swing.JSplitPane jSplitPane1;
     private javax.swing.JSplitPane jSplitPane2;
-    private javax.swing.JLabel labelStatus;
+    private javax.swing.JTextArea taStatus;
     // End of variables declaration//GEN-END:variables
 }
