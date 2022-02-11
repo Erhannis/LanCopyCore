@@ -289,7 +289,11 @@ public class CommsManager implements CSProcess {
                         
                         //TODO Likewise
                         // Also, this is weirdly unrelated to the other stuff in this block
-                        JmDNSProcess.start(dataOwner, st.boundPort, radOut);
+                        try {
+                            JmDNSProcess.start(dataOwner, st.boundPort, radOut);
+                        } catch (Throwable t) {
+                            t.printStackTrace();
+                        }
                         
                         while (true) {
                             try {
