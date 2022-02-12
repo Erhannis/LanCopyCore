@@ -338,10 +338,11 @@ public class CommsManager implements CSProcess {
                                 System.out.println("CMPH ...accepted");
 
                                 if (!plainHttpConfirm || confirmationClient.call("Incoming plain http(s) connection.  Accept?")) {
-                                    CommChannel subchannel = new TcpCommChannel(sc);
-                                    TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, TlsWrapper.ClientServerMode.SERVER, plainHttpRequireCert, subchannel, showLocalFingerprintOut);
-                                    CommChannel channel = tlsWrapper;
-                                    //CommChannel channel = subchannel;
+                                    CommChannel channel = new TcpCommChannel(sc);
+                                    if (dataOwner.encrypted) {
+                                        TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, TlsWrapper.ClientServerMode.SERVER, plainHttpRequireCert, channel, showLocalFingerprintOut);
+                                        channel = tlsWrapper;
+                                    }
 
                                     Data data = ldataClient.call(null);
                                     String mimeType = data.getMime(true);
