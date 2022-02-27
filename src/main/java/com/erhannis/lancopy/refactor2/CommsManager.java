@@ -113,13 +113,9 @@ public class CommsManager implements CSProcess {
         }
     }    
     
-    public static class CommsToken {
-        // ???
-    }
-    
     private final DataOwner dataOwner;
     
-      public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer, FCClient<String, Boolean> confirmationClient) {
+    public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, AltingChannelInput<CommChannel> enrollCommChannelIn, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer, FCClient<String, Boolean> confirmationClient) {
         this.dataOwner = dataOwner;
 
         this.lcommsOut = lcommsOut;
@@ -130,6 +126,7 @@ public class CommsManager implements CSProcess {
         this.statusOut = statusOut;
         this.subscribeIn = subscribeIn;
         this.showLocalFingerprintOut = showLocalFingerprintOut;
+        this.enrollCommChannelIn = enrollCommChannelIn;
         
         this.summaryClient = summaryClient;
         this.aadClient = aadClient;
@@ -166,6 +163,7 @@ public class CommsManager implements CSProcess {
     private final ChannelOutput<Pair<Comm,Boolean>> statusOut;
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutputInt showLocalFingerprintOut;
+    private final AltingChannelInput<CommChannel> enrollCommChannelIn;
     private final AltingChannelInput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgIn;
     private final ChannelOutput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgOut;
     private final AltingChannelInput<NodeManager.ChannelReader> internalChannelReaderShuffleAIn;
@@ -253,10 +251,15 @@ public class CommsManager implements CSProcess {
             this.broadcastMsgSplitter,
             this.txMsgSplitter,
             
+            () -> { //TODO Name thread
+                while (true) {
+                    internalCommChannelOut.write(enrollCommChannelIn.read());
+                }
+            },
+            
             // TCP
             () -> {
                 Thread.currentThread().setName("TCP server listener");
-                
                 //TODO Fallback to "Comms.tcp.enabled"?
                 boolean tcpEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tcp.server_enabled", true);
 
@@ -321,7 +324,6 @@ public class CommsManager implements CSProcess {
             new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
             () -> {
                 Thread.currentThread().setName("Traditional HTTP, manual url");
-                
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
                 //       And should probably be a class in its own right.
                 while (true) {
@@ -344,10 +346,11 @@ public class CommsManager implements CSProcess {
                                 System.out.println("CMPH ...accepted");
 
                                 if (!plainHttpConfirm || confirmationClient.call("Incoming plain http(s) connection.  Accept?")) {
-                                    CommChannel subchannel = new TcpCommChannel(sc);
-                                    TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, false, plainHttpRequireCert, subchannel, showLocalFingerprintOut);
-                                    CommChannel channel = tlsWrapper;
-                                    //CommChannel channel = subchannel;
+                                    CommChannel channel = new TcpCommChannel(sc);
+                                    if (dataOwner.encrypted) {
+                                        TlsWrapper tlsWrapper = new TlsWrapper(dataOwner, TlsWrapper.ClientServerMode.SERVER, plainHttpRequireCert, channel, showLocalFingerprintOut);
+                                        channel = tlsWrapper;
+                                    }
 
                                     Data data = ldataClient.call(null);
                                     String mimeType = data.getMime(true);
@@ -445,7 +448,7 @@ public class CommsManager implements CSProcess {
                     }
                     case 1: { // lsumIn
                         Summary summary = lsumIn.read();
-                        byte[] msg = dataOwner.serialize(summary);
+                        byte[] msg = dataOwner.serialize(logSend(summary));
                         this.txMsgSplitter.write(msg);
                         break;
                     }
@@ -455,7 +458,7 @@ public class CommsManager implements CSProcess {
                             return new ArrayList<Comm>();
                         });
                         for (Comm comm : comms) {
-                            separated.get(comm.owner.id).add(comm);
+                            separated.get(comm.owner == null ? null : comm.owner.id).add(comm);
                         }
                         for (UUID id : separated.keySet()) {
                             if (!nodes.containsKey(id)) {
@@ -463,9 +466,9 @@ public class CommsManager implements CSProcess {
                             }
                             nodes.get(id).subscribeOut.write(separated.get(id));
                             // This might only be necessary on startNodeManager, but for robustness it shouldn't hurt to leave it here
-                            nodes.get(id).txMsgOut.write(dataOwner.serialize(aadClient.call(dataOwner.ID)));
-                            nodes.get(id).txMsgOut.write(dataOwner.serialize(summaryClient.call(dataOwner.ID)));
-                            nodes.get(id).txMsgOut.write(dataOwner.serialize(rosterClient.call(null)));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(aadClient.call(dataOwner.ID))));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(summaryClient.call(dataOwner.ID))));
+                            nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(rosterClient.call(null))));
                         }
                         break;
                     }
@@ -597,9 +600,9 @@ public class CommsManager implements CSProcess {
                         }
                         nodes.get(id).channelReaderShuffleBOut.write(cr);
                         // This might only be necessary on startNodeManager, but for robustness it shouldn't hurt to leave it here
-                        nodes.get(id).txMsgOut.write(dataOwner.serialize(aadClient.call(dataOwner.ID)));
-                        nodes.get(id).txMsgOut.write(dataOwner.serialize(summaryClient.call(dataOwner.ID)));
-                        nodes.get(id).txMsgOut.write(dataOwner.serialize(rosterClient.call(null)));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(aadClient.call(dataOwner.ID))));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(summaryClient.call(dataOwner.ID))));
+                        nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(rosterClient.call(null))));
                         break;
                     }
                     case 5: { // internalCommStatusIn
@@ -635,7 +638,7 @@ public class CommsManager implements CSProcess {
                         TaskItem<UUID, Pair<String, InputStream>> task = dataServer.read();
                         NodeManager.NMInterface nm = nodes.get(task.val);
                         DataRequestMessage drm = new DataRequestMessage();
-                        byte[] msg = dataOwner.serialize(drm);
+                        byte[] msg = dataOwner.serialize(logSend(drm));
                         nm.txMsgOut.write(msg);
                         incomingTransfers.put(drm.correlationId, new IncomingTransferState(null, task));
                         break;
@@ -686,11 +689,11 @@ public class CommsManager implements CSProcess {
                             if (state.index == 0) {
                                 DataStartMessage dsm = new DataStartMessage(correlationId, state.mimeType, data, eom);
                                 System.out.println("CM tx " + dsm);
-                                msg = dataOwner.serialize(dsm);
+                                msg = dataOwner.serialize(logSend(dsm));
                             } else {
                                 DataChunkMessage dcm = new DataChunkMessage(correlationId, state.index, data, eom);
                                 System.out.println("CM tx " + dcm);
-                                msg = dataOwner.serialize(dcm);
+                                msg = dataOwner.serialize(logSend(dcm));
                             }
                             nm.txMsgOut.write(msg);
                             somethingSent = true;
@@ -718,5 +721,10 @@ public class CommsManager implements CSProcess {
                 t.printStackTrace();
             }
         }
+    }
+    
+    private static <T> T logSend(T o) {
+        System.out.println("CM sending " + o);
+        return o;
     }
 }

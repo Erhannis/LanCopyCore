@@ -8,6 +8,7 @@ import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.tls.TlsWrapper;
+import com.erhannis.lancopy.refactor2.tls.TlsWrapper.ClientServerMode;
 import com.erhannis.mathnstuff.Pair;
 import com.google.common.primitives.Ints;
 import java.io.IOException;
@@ -242,7 +243,7 @@ public class NodeManager implements CSProcess {
                                 //TODO Actually, since both layers of cc have an interrupt callback, handling that's a bit weird
                                 //TODO Verify cert matches id
                                 // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
-                                cc = new TlsWrapper(dataOwner, false, true, cc, showLocalFingerprintOut);
+                                cc = new TlsWrapper(dataOwner, ClientServerMode.HAGGLE, true, cc, showLocalFingerprintOut);
                             }
                             ChannelReader cr = new ChannelReader(cc, nodeId);
                             new ProcessManager(cr).start();
@@ -251,7 +252,7 @@ public class NodeManager implements CSProcess {
                             // Send self-identification
                             try {
                                 //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
-                                byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                byte[] msg = dataOwner.serialize(logSend(new IdentificationMessage(dataOwner.ID)));
                                 cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
                                 cr.cc.write(ByteBuffer.wrap(msg));
 
@@ -299,7 +300,7 @@ public class NodeManager implements CSProcess {
                                         //TODO Are interrupts still a thing?
                                         //TODO Verify cert matches id
                                         // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
-                                        cc = new TlsWrapper(dataOwner, true, true, cc, showLocalFingerprintOut);
+                                        cc = new TlsWrapper(dataOwner, ClientServerMode.HAGGLE, true, cc, showLocalFingerprintOut);
                                     }
                                     ChannelReader cr = new ChannelReader(cc, nodeId);
                                     new ProcessManager(cr).start();
@@ -308,7 +309,7 @@ public class NodeManager implements CSProcess {
                                     // Send self-identification
                                     try {
                                         //TODO It's a little wrong for NM to serialize a message...but, it seems like things would get a lot more complicated, otherwise.
-                                        byte[] msg = dataOwner.serialize(new IdentificationMessage(dataOwner.ID));
+                                        byte[] msg = dataOwner.serialize(logSend(new IdentificationMessage(dataOwner.ID)));
                                         cr.cc.write(ByteBuffer.wrap(Ints.toByteArray(msg.length)));
                                         cr.cc.write(ByteBuffer.wrap(msg));
 
@@ -469,5 +470,10 @@ public class NodeManager implements CSProcess {
                 t.printStackTrace();
             }
         }
+    }
+    
+    private static <T> T logSend(T o) {
+        System.out.println("NM sending " + o);
+        return o;
     }
 }

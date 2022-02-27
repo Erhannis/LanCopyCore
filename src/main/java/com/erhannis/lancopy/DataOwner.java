@@ -36,6 +36,7 @@ import java.io.InputStream;
 import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
 import java.security.KeyStore;
+import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.Properties;
@@ -64,6 +65,8 @@ public class DataOwner {
     public final UUID ID;//UUID.randomUUID();
 
     public final Options options;
+    
+    public final SecureRandom rand;
 
     static private final ThreadLocal<Kryo> kryos = new ThreadLocal<Kryo>() {
         protected Kryo initialValue() {
@@ -101,6 +104,7 @@ public class DataOwner {
     }
     
     public DataOwner(Options options, ChannelOutputInt showLocalFingerprintOut, Function<String, Boolean> trustCallback) {
+        this.rand = new SecureRandom();
         this.options = options;
         this.ohClient = new OkHttpClient.Builder()
                 .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)

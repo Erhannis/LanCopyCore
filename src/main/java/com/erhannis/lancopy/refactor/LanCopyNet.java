@@ -8,6 +8,7 @@ package com.erhannis.lancopy.refactor;
 import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.TextData;
+import com.erhannis.lancopy.refactor2.CommChannel;
 import com.erhannis.lancopy.refactor2.CommsManager;
 import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
@@ -69,6 +70,10 @@ public class LanCopyNet {
         AltingChannelInput<List<Comm>> lcommsIn = lcommsChannel.in();
         ChannelOutput<List<Comm>> lcommsOut = JcspUtils.logDeadlock(lcommsChannel.out());
 
+        Any2OneChannel<CommChannel> enrollCommChannelChannel = Channel.<CommChannel> any2one(new InfiniteBuffer<>());
+        AltingChannelInput<CommChannel> enrollCommChannelIn = enrollCommChannelChannel.in();
+        ChannelOutput<CommChannel> enrollCommChannelOut = JcspUtils.logDeadlock(enrollCommChannelChannel.out());
+        
         
         SynchronousSplitter<Advertisement> adUpdatedSplitter = new SynchronousSplitter<>();
         SynchronousSplitter<Summary> summaryUpdatedSplitter = new SynchronousSplitter<>();
@@ -91,9 +96,9 @@ public class LanCopyNet {
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
-            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer(), confirmationCall.getClient())
+            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, enrollCommChannelIn, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer(), confirmationCall.getClient())
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, enrollCommChannelOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
     }
 
     public static class UiInterface {
@@ -103,18 +108,20 @@ public class LanCopyNet {
         public final AltingChannelInput<Pair<Comm,Boolean>> commStatusIn;
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
+        public final ChannelOutput<CommChannel> enrollCommChannelOut;
         public final FCClient<UUID, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         public final AltingFCServer<String, Boolean> confirmationServer;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall, AltingFCServer<String, Boolean> confirmationServer) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<CommChannel> enrollCommChannelOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall, AltingFCServer<String, Boolean> confirmationServer) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
             this.commStatusIn = commStatusIn;
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
+            this.enrollCommChannelOut = enrollCommChannelOut;
             this.dataCall = dataCall;
             this.rosterCall = rosterCall;
             this.adCall = adCall;
