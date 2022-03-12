@@ -5,7 +5,6 @@
  */
 package com.erhannis.lancopy;
 
-import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.refactor.Advertisement;
 import com.erhannis.lancopy.refactor.Comm;
 import com.erhannis.lancopy.refactor.Summary;
@@ -17,8 +16,6 @@ import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.messages.Message;
 import com.erhannis.lancopy.refactor2.tls.ContextFactory;
 import com.erhannis.mathnstuff.components.OptionsFrame;
-import com.erhannis.mathnstuff.utils.Observable;
-import com.erhannis.mathnstuff.utils.ObservableMap;
 import com.erhannis.mathnstuff.utils.Options;
 import com.esotericsoftware.kryo.Kryo;
 import com.esotericsoftware.kryo.io.Input;
@@ -27,30 +24,19 @@ import de.javakaffee.kryoserializers.UUIDSerializer;
 import de.javakaffee.kryoserializers.UnmodifiableCollectionsSerializer;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
-import java.io.File;
-import java.io.FileInputStream;
-import java.io.FileNotFoundException;
-import java.io.FileOutputStream;
 import java.io.IOException;
-import java.io.InputStream;
-import java.nio.ByteBuffer;
 import java.security.GeneralSecurityException;
-import java.security.KeyStore;
 import java.security.SecureRandom;
 import java.util.ArrayList;
 import java.util.HashSet;
-import java.util.Properties;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Function;
 import java.util.logging.Level;
 import java.util.logging.Logger;
-import javax.jmdns.ServiceInfo;
 import javax.naming.InvalidNameException;
 import jcsp.lang.ChannelOutputInt;
-import okhttp3.OkHttpClient;
 import org.spongycastle.operator.OperatorCreationException;
-import sun.security.x509.X500Name;
 
 /**
  *
@@ -91,7 +77,6 @@ public class DataOwner {
             return kryo;
         }
     };
-    public final OkHttpClient ohClient;
     public final boolean encrypted;
     public final ContextFactory.Context tlsContext;
 
@@ -106,11 +91,6 @@ public class DataOwner {
     public DataOwner(Options options, ChannelOutputInt showLocalFingerprintOut, Function<String, Boolean> trustCallback) {
         this.rand = new SecureRandom();
         this.options = options;
-        this.ohClient = new OkHttpClient.Builder()
-                .connectTimeout((Integer) options.getOrDefault("OkHttp.CONNECT_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
-                .writeTimeout((Integer) options.getOrDefault("OkHttp.WRITE_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
-                .readTimeout((Integer) options.getOrDefault("OkHttp.READ_TIMEOUT", 35000), TimeUnit.MILLISECONDS)
-                .build();
         if ((Boolean)options.getOrDefault("Security.ENCRYPTION", true)) {
             this.encrypted = true;
             String keystorePath = (String) options.getOrDefault("Security.KEYSTORE_PATH", "lancopy.ks");
