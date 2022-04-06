@@ -26,6 +26,7 @@ import com.erhannis.lancopy.refactor2.udp.UdpMulticastBroadcastTransmitter;
 import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
+import com.erhannis.mathnstuff.utils.Options.LiveOption;
 import fi.iki.elonen.NanoHTTPD;
 import static fi.iki.elonen.NanoHTTPD.newChunkedResponse;
 import java.io.IOException;
@@ -236,6 +237,8 @@ public class CommsManager implements CSProcess {
         //TODO Move specifics elsewhere?
         //TODO This is kinda cluttered
 
+        LiveOption<Integer> maxAdSize = dataOwner.options.getOrDefaultLive("CommsManager.MAX_AD_SIZE", 250000);
+        
         int ipv4MulticastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.port", 12113);
         String ipv4MulticastAddress = (String) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.address", "234.119.187.64");
         int ipv6MulticastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv6.port", 12114);
@@ -254,7 +257,7 @@ public class CommsManager implements CSProcess {
         boolean udpIpv4MulticastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.enabled", true);
         boolean udpIpv6MulticastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv6.enabled", true);
         int tcpLocalScanBroadcastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.tcp.localscan.port", 12116);
-        boolean tcpLocalScanBroadcastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.tcp.localscan.enabled", true);
+        LiveOption<Boolean> tcpLocalScanBroadcastEnabled = dataOwner.options.getOrDefaultLive("Comms.broadcast.tcp.localscan.enabled", true);
         
         //TODO Move these somewhere else?  Abstract?
         new ProcessManager(new NameParallel(new CSProcess[] {
@@ -332,8 +335,8 @@ public class CommsManager implements CSProcess {
             (udpIpv4MulticastEnabled ? new UdpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
             (udpIpv6MulticastEnabled ? new UdpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut) : new Skip()), //TODO Ditto
             (udpIpv6MulticastEnabled ? new UdpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
-            (tcpLocalScanBroadcastEnabled ? new TcpLocalScanBroadcastReceiver(tcpLocalScanBroadcastPort, (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000), this.broadcastMsgSplitter.register(new InfiniteBuffer<>()), internalRxBroadcastOut) : new Skip()), //TODO Ditto
-            (tcpLocalScanBroadcastEnabled ? new TcpLocalScanBroadcastTransmitter(tcpLocalScanBroadcastPort, (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000), internalRxBroadcastOut, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
+            new TcpLocalScanBroadcastReceiver(tcpLocalScanBroadcastEnabled.copy(), tcpLocalScanBroadcastPort, maxAdSize.copy(), this.broadcastMsgSplitter.register(new InfiniteBuffer<>()), internalRxBroadcastOut), //TODO Ditto
+            new TcpLocalScanBroadcastTransmitter(tcpLocalScanBroadcastEnabled.copy(), tcpLocalScanBroadcastPort, maxAdSize.copy(), internalRxBroadcastOut, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
             () -> {
                 Thread.currentThread().setName("Traditional HTTP, manual url");
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
@@ -497,9 +500,9 @@ public class CommsManager implements CSProcess {
                                 nodes.get(fromId).demandShuffleChannelOut.write(msg.a);
                             }
                         } else if (o instanceof Advertisement) {
-                            int maxAdSize = (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000);
-                            if (msg.b.length > maxAdSize) {
-                                System.err.println("CM rx ad too big: " + msg.b.length + " > " + maxAdSize);
+                            int mas = maxAdSize.fetch();
+                            if (msg.b.length > mas) {
+                                System.err.println("CM rx ad too big: " + msg.b.length + " > " + mas);
                                 //TODO Respond with error?
                             } else {
                                 Advertisement ad = (Advertisement) o;
@@ -584,9 +587,9 @@ public class CommsManager implements CSProcess {
                             if (o instanceof List) {
                                 List l = (List) o;
                                 
-                                int maxAdSize = (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000);
-                                if (msg.b.length > (maxAdSize * l.size())) { // Not exactly correct, but probably close enough...?
-                                    System.err.println("CM rx ad too big: " + msg.b.length + " > " + maxAdSize);
+                                int mas = maxAdSize.fetch();
+                                if (msg.b.length > (mas * l.size())) { // Not exactly correct, but probably close enough...?
+                                    System.err.println("CM rx ad too big: " + msg.b.length + " > " + mas);
                                     //TODO Respond with error?
                                 }
                                 //TODO Except they COULD send like 1000 ads, I guess.  Blah, I dunno

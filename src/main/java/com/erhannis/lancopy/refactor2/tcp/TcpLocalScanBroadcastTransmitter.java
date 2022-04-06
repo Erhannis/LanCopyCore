@@ -7,6 +7,7 @@ package com.erhannis.lancopy.refactor2.tcp;
 import com.erhannis.lancopy.refactor2.udp.*;
 import com.erhannis.lancopy.refactor2.BroadcastTransmitter;
 import com.erhannis.mathnstuff.MeUtils;
+import com.erhannis.mathnstuff.utils.Options.LiveOption;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -38,13 +39,15 @@ import jcsp.lang.ProcessManager;
  * @author erhannis
  */
 public class TcpLocalScanBroadcastTransmitter extends BroadcastTransmitter {
+    private final LiveOption<Boolean> enabled;
     private final int port;
-    public final int maxAdSize;
+    private final LiveOption<Integer> maxAdSize;
     
     private final ChannelOutput<byte[]> rxMsgOut;
     private final AltingChannelInput<byte[]> txMsgIn;
 
-    public TcpLocalScanBroadcastTransmitter(int port, int maxAdSize, ChannelOutput<byte[]> rxMsgOut, AltingChannelInput<byte[]> txMsgIn) {
+    public TcpLocalScanBroadcastTransmitter(LiveOption<Boolean> enabled, int port, LiveOption<Integer> maxAdSize, ChannelOutput<byte[]> rxMsgOut, AltingChannelInput<byte[]> txMsgIn) {
+        this.enabled = enabled;
         this.port = port;
         this.maxAdSize = maxAdSize;
         this.rxMsgOut = rxMsgOut;
@@ -95,6 +98,9 @@ public class TcpLocalScanBroadcastTransmitter extends BroadcastTransmitter {
         while (true) {
             try {
                 byte[] txMsg = txMsgIn.read();
+                if (!enabled.fetch()) {
+                    continue;
+                }
                 String transmitted = MeUtils.cleanTextContent(new String(txMsg), "�");
                 System.out.println("TcpLSBT tx " + transmitted);
                 String[] targets = enumerateTargets();
@@ -108,7 +114,7 @@ public class TcpLocalScanBroadcastTransmitter extends BroadcastTransmitter {
                             try {
                                 sc.write(ByteBuffer.wrap(txMsg));
                                 
-                                ByteBuffer incoming = ByteBuffer.allocate(maxAdSize); //TODO Might be heavy, allocating this, frequently
+                                ByteBuffer incoming = ByteBuffer.allocate(maxAdSize.fetch()); //TODO Might be heavy, allocating this, frequently
                                 sc.read(incoming); //TODO Not sure if guaranteed to get all bytes sent, in one go
                                 byte[] rxMsg = Arrays.copyOf(incoming.array(), incoming.position());
                                 String received = MeUtils.cleanTextContent(new String(rxMsg), "�");

@@ -7,6 +7,7 @@ package com.erhannis.lancopy.refactor2.tcp;
 import com.erhannis.lancopy.refactor2.BroadcastReceiver;
 import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.utils.DThread;
+import com.erhannis.mathnstuff.utils.Options.LiveOption;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
@@ -25,6 +26,7 @@ import jcsp.helpers.NameParallel;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
 import jcsp.lang.CSProcess;
+import jcsp.lang.CSTimer;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.PoisonException;
@@ -42,8 +44,9 @@ public class TcpLocalScanBroadcastReceiver extends BroadcastReceiver {
     protected ServerSocketChannel ssc = null;
     private byte[] cachedTxMsg = new byte[0];
 
+    private final LiveOption<Boolean> enabled;
     public final int port;
-    public final int maxAdSize;
+    public final LiveOption<Integer> maxAdSize;
 
     private final AltingChannelInput<byte[]> txMsgIn;
     public final ChannelOutput<byte[]> txMsgOut;
@@ -51,19 +54,20 @@ public class TcpLocalScanBroadcastReceiver extends BroadcastReceiver {
     private final ChannelOutput<byte[]> rxMsgOut;
 
     //TODO Should this exist?  Or should we require pass the channel?
-    public TcpLocalScanBroadcastReceiver(int port, int maxAdSize) {
-        this(port, maxAdSize, Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1), Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1));
+    public TcpLocalScanBroadcastReceiver(LiveOption<Boolean> enabled, int port, LiveOption<Integer> maxAdSize) {
+        this(enabled, port, maxAdSize, Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1), Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1));
     }
 
-    private TcpLocalScanBroadcastReceiver(int port, int maxAdSize, Any2OneChannel<byte[]> txMsgChannel, Any2OneChannel<byte[]> rxMsgChannel) {
-        this(port, maxAdSize, txMsgChannel.in(), JcspUtils.logDeadlock(txMsgChannel.out()), rxMsgChannel.in(), JcspUtils.logDeadlock(rxMsgChannel.out()));
+    private TcpLocalScanBroadcastReceiver(LiveOption<Boolean> enabled, int port, LiveOption<Integer> maxAdSize, Any2OneChannel<byte[]> txMsgChannel, Any2OneChannel<byte[]> rxMsgChannel) {
+        this(enabled, port, maxAdSize, txMsgChannel.in(), JcspUtils.logDeadlock(txMsgChannel.out()), rxMsgChannel.in(), JcspUtils.logDeadlock(rxMsgChannel.out()));
     }
 
-    public TcpLocalScanBroadcastReceiver(int port, int maxAdSize, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> rxMsgOut) {
-        this(port, maxAdSize, txMsgIn, null, null, rxMsgOut);
+    public TcpLocalScanBroadcastReceiver(LiveOption<Boolean> enabled, int port, LiveOption<Integer> maxAdSize, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> rxMsgOut) {
+        this(enabled, port, maxAdSize, txMsgIn, null, null, rxMsgOut);
     }
 
-    private TcpLocalScanBroadcastReceiver(int port, int maxAdSize, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> txMsgOut, AltingChannelInput<byte[]> rxMsgIn, ChannelOutput<byte[]> rxMsgOut) {
+    private TcpLocalScanBroadcastReceiver(LiveOption<Boolean> enabled, int port, LiveOption<Integer> maxAdSize, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> txMsgOut, AltingChannelInput<byte[]> rxMsgIn, ChannelOutput<byte[]> rxMsgOut) {
+        this.enabled = enabled;
         this.port = port;
         this.maxAdSize = maxAdSize;
         this.txMsgIn = txMsgIn;
@@ -84,40 +88,50 @@ public class TcpLocalScanBroadcastReceiver extends BroadcastReceiver {
                 }
             }, () -> {
                 Thread.currentThread().setName("TcpLocalScanBroadcastReceiver server");
-                try {
-                    ssc = ServerSocketChannel.open();
-                    ssc.socket().bind(new InetSocketAddress(port));
-                    while (TRUE) {
-                        try {
-                            SocketChannel sc = ssc.accept();
-                            new ProcessManager(() -> {
-                                System.out.println("-->TcpLSBR connection");
-                                try {
-                                    Thread.currentThread().setName("TcpLSBR connection");
-                                    ByteBuffer incoming = ByteBuffer.allocate(maxAdSize); //TODO Might be heavy, allocating this, frequently
-                                    sc.read(incoming); //TODO Not sure if guaranteed to get all bytes sent, in one go
-                                    byte[] rxMsg = Arrays.copyOf(incoming.array(), incoming.position());
-                                    String received = MeUtils.cleanTextContent(new String(rxMsg), "�");
-                                    System.out.println("TcpLSBR rx " + received);
-                                    
-                                    rxMsgOut.write(rxMsg);
-                                    sc.write(ByteBuffer.wrap(cachedTxMsg));
-                                } catch (IOException ex) {
-                                    Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
-                                } finally {
-                                    System.out.println("<--TcpLSBR connection");
-                                }
-                            }).start();
-                        } catch (IOException ex) {
-                            Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
-                        }
+                CSTimer timer = new CSTimer();
+                while (TRUE) {
+                    while (!enabled.fetch()) {
+                        timer.sleep(1000);
                     }
-                } catch (IOException ex) {
-                    Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
-                    return; //TODO ??
-                } finally {
-                    System.out.println("<--TcpLocalScanBroadcastReceiver");
+                    try {
+                        ssc = ServerSocketChannel.open();
+                        ssc.socket().bind(new InetSocketAddress(port));
+                        while (TRUE) {
+                            try {
+                                SocketChannel sc = ssc.accept();
+                                if (!enabled.fetch()) {
+                                    sc.close();
+                                    ssc.close();
+                                    break;
+                                }
+                                new ProcessManager(() -> {
+                                    System.out.println("-->TcpLSBR connection");
+                                    try {
+                                        Thread.currentThread().setName("TcpLSBR connection");
+                                        ByteBuffer incoming = ByteBuffer.allocate(maxAdSize.fetch()); //TODO Might be heavy, allocating this, frequently
+                                        sc.read(incoming); //TODO Not sure if guaranteed to get all bytes sent, in one go
+                                        byte[] rxMsg = Arrays.copyOf(incoming.array(), incoming.position());
+                                        String received = MeUtils.cleanTextContent(new String(rxMsg), "�");
+                                        System.out.println("TcpLSBR rx " + received);
+
+                                        rxMsgOut.write(rxMsg);
+                                        sc.write(ByteBuffer.wrap(cachedTxMsg));
+                                    } catch (IOException ex) {
+                                        Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                                    } finally {
+                                        System.out.println("<--TcpLSBR connection");
+                                    }
+                                }).start();
+                            } catch (IOException ex) {
+                                Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                            }
+                        }
+                    } catch (IOException ex) {
+                        Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                        timer.sleep(1000);
+                    }
                 }
+                System.out.println("<--TcpLocalScanBroadcastReceiver");
             }
         }).run();
     }
