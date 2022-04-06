@@ -15,12 +15,12 @@ import com.erhannis.lancopy.refactor2.messages.DataChunkMessage;
 import com.erhannis.lancopy.refactor2.messages.DataRequestMessage;
 import com.erhannis.lancopy.refactor2.messages.DataStartMessage;
 import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
-import com.erhannis.lancopy.refactor2.tcp.TcpBroadcastBroadcastReceiver;
-import com.erhannis.lancopy.refactor2.tcp.TcpBroadcastBroadcastTransmitter;
 import com.erhannis.lancopy.refactor2.tcp.TcpCommChannel;
-import com.erhannis.lancopy.refactor2.tcp.TcpMulticastBroadcastReceiver;
-import com.erhannis.lancopy.refactor2.tcp.TcpMulticastBroadcastTransmitter;
 import com.erhannis.lancopy.refactor2.tls.TlsWrapper;
+import com.erhannis.lancopy.refactor2.udp.UdpBroadcastBroadcastReceiver;
+import com.erhannis.lancopy.refactor2.udp.UdpBroadcastBroadcastTransmitter;
+import com.erhannis.lancopy.refactor2.udp.UdpMulticastBroadcastReceiver;
+import com.erhannis.lancopy.refactor2.udp.UdpMulticastBroadcastTransmitter;
 import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.Pair;
@@ -74,6 +74,7 @@ import jcsp.lang.Guard;
 import jcsp.lang.One2OneChannelSymmetric;
 import jcsp.lang.Parallel;
 import jcsp.lang.ProcessManager;
+import jcsp.lang.Skip;
 import jcsp.util.Buffer;
 import jcsp.util.ChannelDataStore;
 import jcsp.util.InfiniteBuffer;
@@ -233,18 +234,23 @@ public class CommsManager implements CSProcess {
         //TODO Move specifics elsewhere?
         //TODO This is kinda cluttered
 
-        int ipv4MulticastPort = (int) dataOwner.options.getOrDefault("Comms.tcp.multicast.ipv4.port", 12113);
-        String ipv4MulticastAddress = (String) dataOwner.options.getOrDefault("Comms.tcp.multicast.ipv4.address", "234.119.187.64");
-        int ipv6MulticastPort = (int) dataOwner.options.getOrDefault("Comms.tcp.multicast.ipv6.port", 12114);
-        String ipv6MulticastAddress = (String) dataOwner.options.getOrDefault("Comms.tcp.multicast.ipv6.address", "[ff05:acbc:d10a:5fa4:9dac:4ff5:3dbe:aacc]"); //TODO Figure out port
+        int ipv4MulticastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.port", 12113);
+        String ipv4MulticastAddress = (String) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.address", "234.119.187.64");
+        int ipv6MulticastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv6.port", 12114);
+        String ipv6MulticastAddress = (String) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv6.address", "[ff05:acbc:d10a:5fa4:9dac:4ff5:3dbe:aacc]"); //TODO Figure out port
         
-        int broadcastPort = (int) dataOwner.options.getOrDefault("Comms.tcp.broadcast.port", 12115);
+        int broadcastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.udp.broadcast.port", 12115);
         //TODO It'd be nice if LanCopy automatically responded to network configuration changes, but that's a liiiitle out of scope for now
-        String[] broadcastAddresses = TcpBroadcastBroadcastTransmitter.enumerateBroadcastAddresses();
         ArrayList<CSProcess> tbbts = new ArrayList<>();
-        for (int i = 0; i < broadcastAddresses.length; i++) {
-            tbbts.add(new TcpBroadcastBroadcastTransmitter(broadcastAddresses[i], broadcastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())));
+        boolean udpBroadcastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.broadcast.enabled", true);
+        if (udpBroadcastEnabled) {
+            String[] broadcastAddresses = UdpBroadcastBroadcastTransmitter.enumerateBroadcastAddresses();
+            for (int i = 0; i < broadcastAddresses.length; i++) {
+                tbbts.add(new UdpBroadcastBroadcastTransmitter(broadcastAddresses[i], broadcastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())));
+            }
         }
+        boolean udpIpv4MulticastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.enabled", true);
+        boolean udpIpv6MulticastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv6.enabled", true);
         
         //TODO Move these somewhere else?  Abstract?
         new ProcessManager(new NameParallel(new CSProcess[] {
@@ -316,12 +322,12 @@ public class CommsManager implements CSProcess {
                     }
                 }
             },
-            new TcpBroadcastBroadcastReceiver(broadcastPort, internalRxBroadcastOut), //TODO Make channel poisonable, for closing?
+            (udpBroadcastEnabled ? new UdpBroadcastBroadcastReceiver(broadcastPort, internalRxBroadcastOut) : new Skip()), //TODO Make channel poisonable, for closing?
             new NameParallel(tbbts.toArray(new CSProcess[0])),
-            new TcpMulticastBroadcastReceiver(ipv4MulticastPort, ipv4MulticastAddress, internalRxBroadcastOut), //TODO Ditto
-            new TcpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
-            new TcpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut), //TODO Ditto
-            new TcpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())), //TODO Ditto
+            (udpIpv4MulticastEnabled ? new UdpMulticastBroadcastReceiver(ipv4MulticastPort, ipv4MulticastAddress, internalRxBroadcastOut) : new Skip()), //TODO Ditto
+            (udpIpv4MulticastEnabled ? new UdpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
+            (udpIpv6MulticastEnabled ? new UdpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut) : new Skip()), //TODO Ditto
+            (udpIpv6MulticastEnabled ? new UdpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
             () -> {
                 Thread.currentThread().setName("Traditional HTTP, manual url");
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time
