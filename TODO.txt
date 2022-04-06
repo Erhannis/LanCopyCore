@@ -195,4 +195,5 @@ TODO
   socket timeouts?
   UnicodeString flavor not supported???
   should e.g. QR comms be advertised?  They don't occur unless the user makes it happen....
-
+  bug: Comms frame said not connected, but doch
+  

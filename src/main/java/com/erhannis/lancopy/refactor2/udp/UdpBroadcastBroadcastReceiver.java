@@ -64,6 +64,7 @@ public class UdpBroadcastBroadcastReceiver extends BroadcastReceiver {
     @Override
     public void run() {
         System.out.println(">>UdpBroadcastBroadcastReceiver " + port);
+        Thread.currentThread().setName("UdpBroadcastBroadcastReceiver");
         try {
             socket = new DatagramSocket(port);
             while (TRUE) {

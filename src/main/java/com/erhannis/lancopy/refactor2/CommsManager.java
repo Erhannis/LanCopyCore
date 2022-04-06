@@ -16,6 +16,8 @@ import com.erhannis.lancopy.refactor2.messages.DataRequestMessage;
 import com.erhannis.lancopy.refactor2.messages.DataStartMessage;
 import com.erhannis.lancopy.refactor2.messages.IdentificationMessage;
 import com.erhannis.lancopy.refactor2.tcp.TcpCommChannel;
+import com.erhannis.lancopy.refactor2.tcp.TcpLocalScanBroadcastReceiver;
+import com.erhannis.lancopy.refactor2.tcp.TcpLocalScanBroadcastTransmitter;
 import com.erhannis.lancopy.refactor2.tls.TlsWrapper;
 import com.erhannis.lancopy.refactor2.udp.UdpBroadcastBroadcastReceiver;
 import com.erhannis.lancopy.refactor2.udp.UdpBroadcastBroadcastTransmitter;
@@ -251,6 +253,8 @@ public class CommsManager implements CSProcess {
         }
         boolean udpIpv4MulticastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv4.enabled", true);
         boolean udpIpv6MulticastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.udp.multicast.ipv6.enabled", true);
+        int tcpLocalScanBroadcastPort = (int) dataOwner.options.getOrDefault("Comms.broadcast.tcp.localscan.port", 12116);
+        boolean tcpLocalScanBroadcastEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.broadcast.tcp.localscan.enabled", true);
         
         //TODO Move these somewhere else?  Abstract?
         new ProcessManager(new NameParallel(new CSProcess[] {
@@ -328,6 +332,8 @@ public class CommsManager implements CSProcess {
             (udpIpv4MulticastEnabled ? new UdpMulticastBroadcastTransmitter(ipv4MulticastAddress, ipv4MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
             (udpIpv6MulticastEnabled ? new UdpMulticastBroadcastReceiver(ipv6MulticastPort, ipv6MulticastAddress, internalRxBroadcastOut) : new Skip()), //TODO Ditto
             (udpIpv6MulticastEnabled ? new UdpMulticastBroadcastTransmitter(ipv6MulticastAddress, ipv6MulticastPort, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
+            (tcpLocalScanBroadcastEnabled ? new TcpLocalScanBroadcastReceiver(tcpLocalScanBroadcastPort, (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000), this.broadcastMsgSplitter.register(new InfiniteBuffer<>()), internalRxBroadcastOut) : new Skip()), //TODO Ditto
+            (tcpLocalScanBroadcastEnabled ? new TcpLocalScanBroadcastTransmitter(tcpLocalScanBroadcastPort, (Integer) dataOwner.options.getOrDefault("CommsManager.MAX_AD_SIZE", 250000), internalRxBroadcastOut, this.broadcastMsgSplitter.register(new InfiniteBuffer<>())) : new Skip()), //TODO Ditto
             () -> {
                 Thread.currentThread().setName("Traditional HTTP, manual url");
                 //TODO This is a bit hacky; rebinds port every connection and doesn't accept more than one at a time

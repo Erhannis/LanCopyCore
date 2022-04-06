@@ -70,6 +70,7 @@ public class UdpBroadcastBroadcastTransmitter extends BroadcastTransmitter {
     @Override
     public void run() {
         System.out.println("UdpBroadcastBroadcastTransmitter start, " + address + " " + port);
+        Thread.currentThread().setName("UdpBroadcastBroadcastTransmitter");
         DatagramSocket socket = null;
         InetAddress group = null;
         

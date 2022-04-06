@@ -34,6 +34,7 @@ public class UdpMulticastBroadcastTransmitter extends BroadcastTransmitter {
     @Override
     public void run() {
         System.out.println("UdpMulticastBroadcastTransmitter start, " + address + " " + port);
+        Thread.currentThread().setName("UdpMulticastBroadcastTransmitter");
         MulticastSocket socket = null;
         InetAddress group = null;
         

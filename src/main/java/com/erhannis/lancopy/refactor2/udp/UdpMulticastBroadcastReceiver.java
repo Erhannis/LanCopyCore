@@ -67,6 +67,7 @@ public class UdpMulticastBroadcastReceiver extends BroadcastReceiver {
     @Override
     public void run() {
         System.out.println(">>UdpMulticastBroadcastReceiver " + address + " " + port);
+        Thread.currentThread().setName("UdpMulticastBroadcastReceiver");
         InetAddress group;
         try {
             socket = new MulticastSocket(port);

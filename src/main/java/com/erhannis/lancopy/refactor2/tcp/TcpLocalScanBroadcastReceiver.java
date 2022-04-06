@@ -6,93 +6,127 @@ package com.erhannis.lancopy.refactor2.tcp;
 
 import com.erhannis.lancopy.refactor2.BroadcastReceiver;
 import com.erhannis.mathnstuff.MeUtils;
+import com.erhannis.mathnstuff.utils.DThread;
 import java.io.IOException;
 import java.net.DatagramPacket;
 import java.net.DatagramSocket;
+import java.net.InetSocketAddress;
+import java.net.ServerSocket;
+import java.net.Socket;
 import java.net.SocketException;
+import java.nio.ByteBuffer;
+import java.nio.channels.ServerSocketChannel;
+import java.nio.channels.SocketChannel;
+import java.util.Arrays;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 import jcsp.helpers.JcspUtils;
+import jcsp.helpers.NameParallel;
 import jcsp.lang.AltingChannelInput;
 import jcsp.lang.Any2OneChannel;
+import jcsp.lang.CSProcess;
 import jcsp.lang.Channel;
 import jcsp.lang.ChannelOutput;
 import jcsp.lang.PoisonException;
+import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
 
 /**
  * 
  * @author erhannis
  */
-public class TcpBroadcastBroadcastReceiver extends BroadcastReceiver {
+public class TcpLocalScanBroadcastReceiver extends BroadcastReceiver {
 
     private static final boolean TRUE = "".isEmpty(); // Ugh
 
-    protected DatagramSocket socket = null;
-    protected byte[] buf = new byte[65507];
+    protected ServerSocketChannel ssc = null;
+    private byte[] cachedTxMsg = new byte[0];
 
     public final int port;
+    public final int maxAdSize;
 
+    private final AltingChannelInput<byte[]> txMsgIn;
+    public final ChannelOutput<byte[]> txMsgOut;
     public final AltingChannelInput<byte[]> rxMsgIn;
     private final ChannelOutput<byte[]> rxMsgOut;
 
     //TODO Should this exist?  Or should we require pass the channel?
-    public TcpBroadcastBroadcastReceiver(int port) {
-        this(port, Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1));
+    public TcpLocalScanBroadcastReceiver(int port, int maxAdSize) {
+        this(port, maxAdSize, Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1), Channel.<byte[]>any2one(new InfiniteBuffer<byte[]>(), 1));
     }
 
-    private TcpBroadcastBroadcastReceiver(int port, Any2OneChannel<byte[]> msgChannel) {
-        this(port, msgChannel.in(), JcspUtils.logDeadlock(msgChannel.out()));
+    private TcpLocalScanBroadcastReceiver(int port, int maxAdSize, Any2OneChannel<byte[]> txMsgChannel, Any2OneChannel<byte[]> rxMsgChannel) {
+        this(port, maxAdSize, txMsgChannel.in(), JcspUtils.logDeadlock(txMsgChannel.out()), rxMsgChannel.in(), JcspUtils.logDeadlock(rxMsgChannel.out()));
     }
 
-    public TcpBroadcastBroadcastReceiver(int port, ChannelOutput<byte[]> msgOut) {
-        this(port, null, msgOut);
+    public TcpLocalScanBroadcastReceiver(int port, int maxAdSize, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> rxMsgOut) {
+        this(port, maxAdSize, txMsgIn, null, null, rxMsgOut);
     }
 
-    private TcpBroadcastBroadcastReceiver(int port, AltingChannelInput<byte[]> rxMsgIn, ChannelOutput<byte[]> rxMsgOut) {
+    private TcpLocalScanBroadcastReceiver(int port, int maxAdSize, AltingChannelInput<byte[]> txMsgIn, ChannelOutput<byte[]> txMsgOut, AltingChannelInput<byte[]> rxMsgIn, ChannelOutput<byte[]> rxMsgOut) {
         this.port = port;
+        this.maxAdSize = maxAdSize;
+        this.txMsgIn = txMsgIn;
+        this.txMsgOut = txMsgOut;
         this.rxMsgIn = rxMsgIn;
         this.rxMsgOut = rxMsgOut;
     }
 
-    private static byte[] copyData(DatagramPacket packet) {
-        byte[] buf = new byte[packet.getLength()];
-        System.arraycopy(packet.getData(), packet.getOffset(), buf, 0, buf.length);
-        return buf;
-    }
-
     @Override
     public void run() {
-        System.out.println(">>TcpBroadcastBroadcastReceiver " + port);
-        try {
-            socket = new DatagramSocket(port);
-            while (TRUE) {
+        System.out.println("-->TcpLocalScanBroadcastReceiver " + port);
+        Thread.currentThread().setName("TcpLocalScanBroadcastReceiver");
+        new NameParallel(new CSProcess[] {
+            () -> {
+                Thread.currentThread().setName("TcpLocalScanBroadcastReceiver cacher");
+                while (true) {
+                    cachedTxMsg = txMsgIn.read();
+                }
+            }, () -> {
+                Thread.currentThread().setName("TcpLocalScanBroadcastReceiver server");
                 try {
-                    DatagramPacket packet = new DatagramPacket(buf, buf.length);
-                    socket.receive(packet);
-                    String received = MeUtils.cleanTextContent(new String(packet.getData(), 0, packet.getLength()), "�");
-                    System.out.println("TcpBBR rx " + received);
-                    rxMsgOut.write(copyData(packet));
-                } catch (SocketException | PoisonException ex) {
-                    System.out.println("<<TcpBroadcastBroadcastReceiver");
-                    break;
+                    ssc = ServerSocketChannel.open();
+                    ssc.socket().bind(new InetSocketAddress(port));
+                    while (TRUE) {
+                        try {
+                            SocketChannel sc = ssc.accept();
+                            new ProcessManager(() -> {
+                                System.out.println("-->TcpLSBR connection");
+                                try {
+                                    Thread.currentThread().setName("TcpLSBR connection");
+                                    ByteBuffer incoming = ByteBuffer.allocate(maxAdSize); //TODO Might be heavy, allocating this, frequently
+                                    sc.read(incoming); //TODO Not sure if guaranteed to get all bytes sent, in one go
+                                    byte[] rxMsg = Arrays.copyOf(incoming.array(), incoming.position());
+                                    String received = MeUtils.cleanTextContent(new String(rxMsg), "�");
+                                    System.out.println("TcpLSBR rx " + received);
+                                    
+                                    rxMsgOut.write(rxMsg);
+                                    sc.write(ByteBuffer.wrap(cachedTxMsg));
+                                } catch (IOException ex) {
+                                    Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                                } finally {
+                                    System.out.println("<--TcpLSBR connection");
+                                }
+                            }).start();
+                        } catch (IOException ex) {
+                            Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                        }
+                    }
                 } catch (IOException ex) {
-                    Logger.getLogger(TcpBroadcastBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                    Logger.getLogger(TcpLocalScanBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
+                    return; //TODO ??
+                } finally {
+                    System.out.println("<--TcpLocalScanBroadcastReceiver");
                 }
             }
-            socket.close();
-        } catch (IOException ex) {
-            Logger.getLogger(TcpBroadcastBroadcastReceiver.class.getName()).log(Level.SEVERE, null, ex);
-            return; //TODO ??
-        } finally {
-            System.out.println("<<TcpBroadcastBroadcastReceiver");
-        }
+        }).run();
     }
 
     //TODO Different?
     public void shutdown() {
         try {
-            this.socket.close();
+            this.ssc.close();
+            this.txMsgIn.poison(10);
             this.rxMsgOut.poison(10);
         } catch (Exception e) {
         }
