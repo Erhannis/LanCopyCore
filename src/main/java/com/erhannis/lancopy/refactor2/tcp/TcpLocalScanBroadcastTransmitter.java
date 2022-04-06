@@ -25,6 +25,7 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Enumeration;
+import java.util.HashSet;
 import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -55,7 +56,7 @@ public class TcpLocalScanBroadcastTransmitter extends BroadcastTransmitter {
     }
 
     public static String[] enumerateTargets() {
-        ArrayList<String> broadcastList = new ArrayList<>();
+        HashSet<String> targetSet = new HashSet<>();
         Enumeration<NetworkInterface> interfaces;
         try {
             interfaces = NetworkInterface.getNetworkInterfaces();
@@ -76,7 +77,7 @@ public class TcpLocalScanBroadcastTransmitter extends BroadcastTransmitter {
                                 String base = a.replaceFirst("\\.[0-9]+$", ".");
                                 System.out.println("TcpLocalScanBroadcastTransmitter adding addresses " + (base + "*"));
                                 for (int i = 0; i <= 255; i++) {
-                                    broadcastList.add(base + i);
+                                    targetSet.add(base + i);
                                 }
                             });
                 } catch (Throwable t) {
@@ -86,7 +87,7 @@ public class TcpLocalScanBroadcastTransmitter extends BroadcastTransmitter {
         } catch (SocketException ex) {
             Logger.getLogger(TcpLocalScanBroadcastTransmitter.class.getName()).log(Level.SEVERE, null, ex);
         }
-        return broadcastList.toArray(new String[0]);
+        return targetSet.toArray(new String[0]);
     }
     
     @Override
