@@ -181,6 +181,14 @@ Augh, wait, how to decide which NodeManager gets an incoming connection?
   Maybe the NM tags passed-on `byte[] msg` with a CommChannelTag?
     Then, if the CM gets an ID msg that doesn't match the ... hang on
 
+BUGS
+  If a computer sleeps, it often won't reconnect right
+    maybe related to 3+ nodes
+  And sometimes Ads aren't properly updated when another node restarts?
+  One node blocking, waiting for dialog dismiss, can block many nodes
+  Something about, having a success (incoming success?) but still blocking waiting on outgoing connection attempts
+  Occasional read error breaks download
+  Comms don't show incame connections (mark separately?)
 
 TODO
   show NM backpressure on ui?
@@ -196,4 +204,10 @@ TODO
   UnicodeString flavor not supported???
   should e.g. QR comms be advertised?  They don't occur unless the user makes it happen....
   bug: Comms frame said not connected, but doch
-  
+  work on startup speed
+  canceling download does not currently cancel remote transmission
+  and killing a node leaves the fetcher stuck waiting
+  drag from LC to folder?
+  comms, show msg/s per connection
+    might actually be easy - have each comm track its own stats
+  permit cancel download
