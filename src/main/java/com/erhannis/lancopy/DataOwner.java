@@ -58,6 +58,7 @@ public class DataOwner {
         protected Kryo initialValue() {
             Kryo kryo = new Kryo();
 
+            //PERIODIC Update this list whenever you add new message types
             kryo.setReferences(true);
             kryo.register(Advertisement.class);
             kryo.register(Comm.class);

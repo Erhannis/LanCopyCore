@@ -316,9 +316,11 @@ public class NodeManager implements CSProcess {
                                         // If the above lines threw, we don't want to add this connection, anyway
                                         internalJF.join(() -> {
                                             connections.add(cr);
+                                            System.out.println("NM.sub true 1");
                                             commStatusOut.write(Pair.gen(comm, true));
                                             connections.sort(ChannelReader.COMPARATOR);
                                             alt[0] = regenAlt();
+                                            System.out.println("NM.sub SO (1) " + count);
                                             successOut.write(count);
                                             return null;
                                         });
@@ -333,6 +335,7 @@ public class NodeManager implements CSProcess {
                                             Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex1);
                                         }
                                         internalJF.join(() -> {
+                                            System.out.println("NM.sub false 1");
                                             commStatusOut.write(Pair.gen(comm, false));
                                             return null;
                                         });
@@ -340,10 +343,12 @@ public class NodeManager implements CSProcess {
                                 } catch (Exception ex) {
                                     Logger.getLogger(NodeManager.class.getName()).log(Level.SEVERE, null, ex);
                                     internalJF.join(() -> {
+                                        System.out.println("NM.sub false 2");
                                         commStatusOut.write(Pair.gen(comm, false));
                                         return null;
                                     });
                                 } finally {
+                                    System.out.println("NM.sub SO (2) 1");
                                     successOut.write(1);
                                 }
                             });
@@ -358,7 +363,11 @@ public class NodeManager implements CSProcess {
                         }
                         
                         int remaining = count;
-                        Alternative waitingAlt = new Alternative(new Guard[]{successIn, internalJF});
+                        boolean skipWait = (Boolean) dataOwner.options.getOrDefault("NodeManager.SKIP_CONNECTION_WAIT_UNSTABLE", false);
+                        if (skipWait) {
+                            remaining = 0;
+                        }
+                        Alternative waitingAlt = new Alternative(new Guard[]{successIn, internalJF, channelReaderShuffleBIn});
                         while (remaining > 0) {
                             switch (waitingAlt.priSelect()) {
                                 case 0: { // successIn
@@ -368,6 +377,16 @@ public class NodeManager implements CSProcess {
                                 }
                                 case 1: { // internalJF
                                     internalJF.accept(null);
+                                    break;
+                                }
+                                case 2: { // channelReaderShuffleBIn
+                                    //SHAME This is copy from the outer case
+                                    ChannelReader cr = channelReaderShuffleBIn.read();
+                                    System.out.println("NM adopted CR(2), leaving tx wait: " + cr.token);
+                                    connections.add(cr);
+                                    connections.sort(ChannelReader.COMPARATOR);
+                                    alt[0] = regenAlt();
+                                    remaining = 0;
                                     break;
                                 }
                             }
@@ -390,6 +409,8 @@ public class NodeManager implements CSProcess {
                         break;
                     }
                     case 4: { // channelReaderShuffleBIn
+                        //SHAME This is copied to the inner case in subscribeIn (ideally refactored out)
+                        // ...in order that an incoming connection will unblock for subsequent communications rather than waiting for an outgoing attempt to succeed
                         ChannelReader cr = channelReaderShuffleBIn.read();
                         System.out.println("NM adopted CR: " + cr.token);
                         connections.add(cr);
