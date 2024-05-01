@@ -12,8 +12,8 @@ import java.io.InputStream;
  * @author erhannis
  */
 public abstract class Data {
-  public abstract String getMime();
-  public abstract InputStream serialize();
+  public abstract String getMime(boolean external);
+  public abstract InputStream serialize(boolean external);
   // Subclasses are expected to have a static deserialize method, as below:
   //public static abstract Data deserialize(InputStream stream);
 }

@@ -4,3 +4,6 @@ dist/
 target/
 **~
 /settings.xml
+*.ks
+*.ts
+*.dat

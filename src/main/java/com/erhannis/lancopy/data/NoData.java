@@ -7,10 +7,10 @@ package com.erhannis.lancopy.data;
 
 import com.google.common.io.ByteStreams;
 import java.io.ByteArrayInputStream;
-import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.nio.charset.Charset;
+import java.util.Objects;
 import java.util.logging.Level;
 import java.util.logging.Logger;
 
@@ -18,35 +18,39 @@ import java.util.logging.Logger;
  *
  * @author erhannis
  */
-public class BinaryData extends Data {
-  private static final Charset UTF8 = Charset.forName("UTF-8");
-  
-  public final InputStream stream;
+public class NoData extends Data {
+  public NoData() {
+  }
 
-  public BinaryData(InputStream stream) {
-    this.stream = stream;
+  @Override
+  public boolean equals(Object obj) {
+    if (obj == null || !(obj instanceof NoData)) {
+      return false;
+    }
+    return true;
+  }
+
+  @Override
+  public int hashCode() {
+    return Objects.hash("NoData");
   }
   
   @Override
   public String getMime(boolean external) {
-    return "application/octet-stream";
+    return "lancopy/nodata";
   }
 
   @Override
   public String toString() {
-    return "[binary]"; //TODO Length would be nice, but we may not always have
+    return "[NO DATA]";
   }
 
-  /**
-   * Warning: this method returns the raw Stream, and may therefore be destructive.
-   * @return 
-   */
   @Override
   public InputStream serialize(boolean external) {
-    return stream; //TODO Warning: this can maybe only be used once per BinaryData
+    return new ByteArrayInputStream(new byte[0]);
   }
 
-  public static Data deserialize(InputStream stream) {
-    return new BinaryData(stream);
+  public static NoData deserialize(InputStream stream) {
+    return new NoData();
   }
 }

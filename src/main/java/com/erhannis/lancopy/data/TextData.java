@@ -41,7 +41,7 @@ public class TextData extends Data {
   }
   
   @Override
-  public String getMime() {
+  public String getMime(boolean external) {
     return "text/plain";
   }
 
@@ -51,7 +51,7 @@ public class TextData extends Data {
   }
 
   @Override
-  public InputStream serialize() {
+  public InputStream serialize(boolean external) {
     return new ByteArrayInputStream(text.getBytes(UTF8));
   }
 
