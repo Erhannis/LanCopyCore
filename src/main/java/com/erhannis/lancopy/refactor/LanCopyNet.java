@@ -10,9 +10,14 @@ import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.TextData;
 import com.erhannis.lancopy.refactor2.CommChannel;
 import com.erhannis.lancopy.refactor2.CommsManager;
+import com.erhannis.lancopy.refactor2.MessageHandler;
+import com.erhannis.lancopy.refactor2.NodeManager;
+import com.erhannis.lancopy.refactor2.OutgoingTransferState;
+import com.erhannis.lancopy.refactor2.tunnel.TunnelManager;
 import com.erhannis.mathnstuff.Pair;
 import java.io.IOException;
 import java.io.InputStream;
+import java.util.ArrayList;
 import java.util.Collection;
 import java.util.List;
 import java.util.UUID;
@@ -73,6 +78,14 @@ public class LanCopyNet {
         Any2OneChannel<CommChannel> enrollCommChannelChannel = Channel.<CommChannel> any2one(new InfiniteBuffer<>());
         AltingChannelInput<CommChannel> enrollCommChannelIn = enrollCommChannelChannel.in();
         ChannelOutput<CommChannel> enrollCommChannelOut = JcspUtils.logDeadlock(enrollCommChannelChannel.out());
+
+        Any2OneChannel<OutgoingTransferState> txOtsChannel = Channel.<OutgoingTransferState> any2one(new InfiniteBuffer<>());
+        AltingChannelInput<OutgoingTransferState> txOtsIn = txOtsChannel.in();
+        ChannelOutput<OutgoingTransferState> txOtsOut = JcspUtils.logDeadlock(txOtsChannel.out()); //NEXT
+
+        Any2OneChannel<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageChannel = Channel.<Pair<NodeManager.CRToken, Object>> any2one(new InfiniteBuffer<>());
+        AltingChannelInput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageIn = rxUnhandledMessageChannel.in(); //NEXT
+        ChannelOutput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageOut = JcspUtils.logDeadlock(rxUnhandledMessageChannel.out()); //NEXT
         
         
         SynchronousSplitter<Advertisement> adUpdatedSplitter = new SynchronousSplitter<>();
@@ -96,7 +109,32 @@ public class LanCopyNet {
             new NodeTracker(JcspUtils.logDeadlock(adUpdatedSplitter), JcspUtils.logDeadlock(summaryUpdatedSplitter), rxAdIn, summaryToTrackerIn, adCall.getServer(), summaryCall.getServer(), rosterCall.getServer()),
             new LocalData(dataOwner, localDataCall.getServer(), summaryToTrackerOut, newDataIn),
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
-            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, enrollCommChannelIn, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer(), confirmationCall.getClient())
+            new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, enrollCommChannelIn, txOtsIn, rxUnhandledMessageOut, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer(), confirmationCall.getClient()),
+            () -> { // Extra message handlers
+                //NEXT //DUMMY Move to separate class probably
+                //NEXT //DUMMY Shutdown?
+                Alternative alt = new Alternative(new Guard[]{rxUnhandledMessageIn});
+                ArrayList<MessageHandler> messageHandlers = new ArrayList<>();
+                //PERIODIC Extra message handlers go here
+                // Like, as in, message objects that come in from other nodes and don't match anything in the CommsManager's gauntlet
+                messageHandlers.add(new TunnelManager(txOtsOut, confirmationCall.getClient()));
+                while (true) {
+                    switch (alt.priSelect()) {
+                        case 0: { // rxUnhandledMessageIn
+                            Pair<NodeManager.CRToken, Object> dmsg = rxUnhandledMessageIn.read();
+                            handleMessage: {
+                                for (MessageHandler handler : messageHandlers) {
+                                    if (handler.handleMessage(dmsg)) {
+                                        break handleMessage;
+                                    }
+                                }
+                                System.err.println("ERR Got unhandled msg: " + dmsg);
+                            }
+                            break;
+                        }
+                    }
+                }
+            }
         })).start();
         return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, enrollCommChannelOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
     }

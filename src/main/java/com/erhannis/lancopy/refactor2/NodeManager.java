@@ -76,6 +76,7 @@ public class NodeManager implements CSProcess {
     }
     
     public static class CRToken {
+        /** ID of the node this token's ChannelReader is associated with */
         public UUID nodeId;
 
         public CRToken(UUID nodeId) {
@@ -98,7 +99,7 @@ public class NodeManager implements CSProcess {
             return Double.compare(sa, sb);
         };
         
-        // Token used to identify this CR without passing around the CR itself
+        // Token used (by identity, not equality) to identify this CR without passing around the CR itself
         public final CRToken token;
         final CommChannel cc;
         final AltingChannelInput<byte[]> rxMsgIn; // Use externally
@@ -146,6 +147,7 @@ public class NodeManager implements CSProcess {
     }
     
     private final DataOwner dataOwner;
+    /** ID of the node this NodeManager is managing */
     private final UUID nodeId;
     //TODO Don't create duplicate of any open cc?
     /**
@@ -302,7 +304,7 @@ public class NodeManager implements CSProcess {
                                         // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
                                         cc = new TlsWrapper(dataOwner, ClientServerMode.HAGGLE, true, cc, showLocalFingerprintOut);
                                     }
-                                    ChannelReader cr = new ChannelReader(cc, nodeId);
+                                    ChannelReader cr = new ChannelReader(cc, nodeId); //NEXT //DUMMY //DITTO
                                     new ProcessManager(cr).start();
                                     System.out.println("NM created CR: " + cr.token);
 

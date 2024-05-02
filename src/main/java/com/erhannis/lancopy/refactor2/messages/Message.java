@@ -10,7 +10,7 @@ import java.util.UUID;
  *
  * @author erhannis
  */
-public abstract class Message {
+public abstract class Message { //THINK This is a bit misleading, since there are other messages not descended from this
     public final UUID correlationId;
     //TODO Store nodeId, correlationId, etc., here?
     

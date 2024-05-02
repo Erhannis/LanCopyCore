@@ -100,26 +100,10 @@ public class CommsManager implements CSProcess {
             this.task = task;
         }
     }
-
-    private static class OutgoingTransferState {
-        public final UUID targetId;
-        public final String mimeType;
-        public final InputStream is;
-        public int index = 0;
-
-        //TODO Deal with ordering and retransmission etc., for extra robustness spanning multiple comms
-        //TODO Deal with ACK
-
-        public OutgoingTransferState(UUID targetId, String mimeType, InputStream is) {
-            this.targetId = targetId;
-            this.mimeType = mimeType;
-            this.is = is;
-        }
-    }    
     
     private final DataOwner dataOwner;
     
-    public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, AltingChannelInput<CommChannel> enrollCommChannelIn, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer, FCClient<String, Boolean> confirmationClient) {
+    public CommsManager(DataOwner dataOwner, ChannelOutput<List<Comm>> lcommsOut, ChannelOutput<Advertisement> radOut, AltingChannelInput<Advertisement> aadIn, ChannelOutput<Summary> rsumOut, AltingChannelInput<Summary> lsumIn, ChannelOutput<Pair<Comm, Boolean>> statusOut, AltingChannelInput<List<Comm>> subscribeIn, ChannelOutputInt showLocalFingerprintOut, AltingChannelInput<CommChannel> enrollCommChannelIn, AltingChannelInput<OutgoingTransferState> txOtsIn, ChannelOutput<Pair<NodeManager.CRToken,Object>> rxUnhandledMessageOut, FCClient<UUID, Summary> summaryClient, FCClient<UUID, Advertisement> aadClient, FCClient<Void, List<Advertisement>> rosterClient, FCClient<Void, Data> ldataClient, AltingTCServer<UUID, Pair<String, InputStream>> dataServer, FCClient<String, Boolean> confirmationClient) {
         this.dataOwner = dataOwner;
 
         this.lcommsOut = lcommsOut;
@@ -131,6 +115,8 @@ public class CommsManager implements CSProcess {
         this.subscribeIn = subscribeIn;
         this.showLocalFingerprintOut = showLocalFingerprintOut;
         this.enrollCommChannelIn = enrollCommChannelIn;
+        this.txOtsIn = txOtsIn;
+        this.rxUnhandledMessageOut = rxUnhandledMessageOut;
         
         this.summaryClient = summaryClient;
         this.aadClient = aadClient;
@@ -168,6 +154,8 @@ public class CommsManager implements CSProcess {
     private final AltingChannelInput<List<Comm>> subscribeIn;
     private final ChannelOutputInt showLocalFingerprintOut;
     private final AltingChannelInput<CommChannel> enrollCommChannelIn;
+    private final AltingChannelInput<OutgoingTransferState> txOtsIn;
+    private final ChannelOutput<Pair<NodeManager.CRToken,Object>> rxUnhandledMessageOut;
     private final AltingChannelInput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgIn;
     private final ChannelOutput<Pair<NodeManager.CRToken,byte[]>> internalRxMsgOut;
     private final AltingChannelInput<NodeManager.ChannelReader> internalChannelReaderShuffleAIn;
@@ -442,7 +430,7 @@ public class CommsManager implements CSProcess {
         DisableableTimer transferTimer = new DisableableTimer();
         HashMap<UUID, IncomingTransferState> incomingTransfers = new HashMap<>();
         HashMap<UUID, OutgoingTransferState> outgoingTransfers = new HashMap<>();
-        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, internalShowLocalFingerprintIn, dataServer, rebroadcastTimer, transferTimer});
+        Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, txOtsIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, internalShowLocalFingerprintIn, dataServer, rebroadcastTimer, transferTimer});
         while (true) {
             try {
                 switch (alt.priSelect()) {
@@ -487,7 +475,13 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
-                    case 3: { // internalRxMsgIn
+                    case 3: { // txOtsIn
+                        OutgoingTransferState ots = txOtsIn.read();
+                        outgoingTransfers.put(ots.correlationId, ots);
+                        transferTimer.set(0);
+                        break;
+                    }
+                    case 4: { // internalRxMsgIn
                         Pair<NodeManager.CRToken,byte[]> msg = internalRxMsgIn.read();
                         Object o = dataOwner.deserialize(msg.b);
                         System.out.println("CM rx " + o);
@@ -523,8 +517,9 @@ public class CommsManager implements CSProcess {
                             String mimeType = data.getMime(false);
                             InputStream is = data.serialize(false);
 
-                            OutgoingTransferState state = new OutgoingTransferState(msg.a.nodeId, mimeType, is);
-                            outgoingTransfers.put(drm.correlationId, state);
+                            int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);                            
+                            OutgoingTransferState state = new OTSPlain(drm.correlationId, msg.a.nodeId, is, chunkSize, mimeType);
+                            outgoingTransfers.put(drm.correlationId, state); //THINK May not need it to be a map, anymore, just a list or set
                             transferTimer.set(0);
                         } else if (o instanceof DataStartMessage) {
                             //TODO The data messages have byte[], which could be made huge; a DoS attack.  Consider.
@@ -583,7 +578,7 @@ public class CommsManager implements CSProcess {
                                 dataOwner.errOnce("CommsManager rx unsolicited DataChunkMessage " + dcm.correlationId);
                                 //TODO Respond with error?
                             }
-                        } else if (o instanceof List) {
+                        } else if (o instanceof List) { // Ad list, presumably
                             if (o instanceof List) {
                                 List l = (List) o;
                                 
@@ -603,11 +598,12 @@ public class CommsManager implements CSProcess {
                             }
                         } else {
                             //dataOwner.errOnce("ERR CommsManager got unhandled msg: " + o);
-                            System.err.println("ERR CommsManager got unhandled msg: " + o);
+                            Pair<NodeManager.CRToken, Object> dmsg = Pair.gen(msg.a, o);
+                            rxUnhandledMessageOut.write(dmsg); //THINK Not sure if this is the best way or what
                         }
                         break;
                     }
-                    case 4: { // internalChannelReaderShuffleAIn
+                    case 5: { // internalChannelReaderShuffleAIn
                         NodeManager.ChannelReader cr = internalChannelReaderShuffleAIn.read();
                         UUID id = cr.token.nodeId;
                         if (!nodes.containsKey(id)) {
@@ -620,19 +616,19 @@ public class CommsManager implements CSProcess {
                         nodes.get(id).txMsgOut.write(dataOwner.serialize(logSend(rosterClient.call(null))));
                         break;
                     }
-                    case 5: { // internalCommStatusIn
+                    case 6: { // internalCommStatusIn
                         Pair<Comm,Boolean> status = internalCommStatusIn.read();
                         //TODO Status of incame connections, too?
                         statusOut.write(status);
                         break;
                     }
-                    case 6: { // internalCommChannelIn
+                    case 7: { // internalCommChannelIn
                         CommChannel cc = internalCommChannelIn.read();
                         // We don't know which node connected to us, yet, so it goes to the blank NM
                         nodes.get(null).incomingConnectionOut.write(cc);
                         break;
                     }
-                    case 7: { // internalRxBroadcastIn
+                    case 8: { // internalRxBroadcastIn
                         //SECURITY Note that this source is untrusted
                         byte[] msg = internalRxBroadcastIn.read();
                         Object o = dataOwner.deserialize(msg);
@@ -645,11 +641,11 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
-                    case 8: { // internalShowLocalFingerprintIn
+                    case 9: { // internalShowLocalFingerprintIn
                         showLocalFingerprintOut.write(internalShowLocalFingerprintIn.read());
                         break;
                     }
-                    case 9: { // dataServer
+                    case 10: { // dataServer
                         TaskItem<UUID, Pair<String, InputStream>> task = dataServer.read();
                         NodeManager.NMInterface nm = nodes.get(task.val);
                         DataRequestMessage drm = new DataRequestMessage();
@@ -658,7 +654,7 @@ public class CommsManager implements CSProcess {
                         incomingTransfers.put(drm.correlationId, new IncomingTransferState(null, task));
                         break;
                     }
-                    case 10: { // rebroadcastTimer
+                    case 11: { // rebroadcastTimer
                         //TODO Permit separate intervals for different broadcast mechanisms?
                         rebroadcastInterval = (long) dataOwner.options.getOrDefault("Advertisers.rebroadcast_interval", 30000L);
                         rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
@@ -669,7 +665,8 @@ public class CommsManager implements CSProcess {
                         }
                         break;
                     }
-                    case 11: { // transferTimer
+                    case 12: { // transferTimer
+                        //NEXT Add other (e.g. tunnel) requests to set?
                         boolean somethingSent = false;
                         for (Iterator<Entry<UUID, OutgoingTransferState>> iter = outgoingTransfers.entrySet().iterator(); iter.hasNext();) {
                             Entry<UUID, OutgoingTransferState> entry = iter.next();
@@ -684,41 +681,20 @@ public class CommsManager implements CSProcess {
                                     System.out.println("CM channel not ready to rx; skipping...");
                                     continue;
                                 }
-                            }                            
-                            
-                            int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);
-                            byte[] data = new byte[chunkSize];
-                            int count = state.is.read(data);
-                            boolean eom = false;
-                            if (count < 0) {
-                                eom = true;
-                                data = new byte[0];
-                                //TODO It'd be nice if we could set eom on the last chunk to contain data....
-                            } else if (count != chunkSize) {
-                                byte[] newData = new byte[count];
-                                System.arraycopy(data, 0, newData, 0, count);
-                                data = newData;
                             }
                             
-                            byte[] msg;
-                            if (state.index == 0) {
-                                DataStartMessage dsm = new DataStartMessage(correlationId, state.mimeType, data, eom);
-                                System.out.println("CM tx " + dsm);
-                                msg = dataOwner.serialize(logSend(dsm));
-                            } else {
-                                DataChunkMessage dcm = new DataChunkMessage(correlationId, state.index, data, eom);
-                                System.out.println("CM tx " + dcm);
-                                msg = dataOwner.serialize(logSend(dcm));
-                            }
-                            nm.txMsgOut.write(msg);
+                            Object m = state.nextMessage();
+                            System.out.println("CM tx " + m);
+                            byte[] msg = dataOwner.serialize(logSend(m));
+                            nm.txMsgOut.write(msg); //THINK What happens if the tx fails?  How to tell e.g. the TunnelManager?
                             somethingSent = true;
 
-                            if (eom) {
+                            if (state.eom) {
                                 iter.remove();
                                 System.out.println("CM finished tx " + entry.getKey());
                             }
                             
-                            state.index++;
+//                            state.index++;
                         }
                         if (!somethingSent) {
                             System.out.println("CM nothing ready to tx, delaying...");
