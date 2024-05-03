@@ -7,7 +7,7 @@ package com.erhannis.lancopy.refactor2.messages.tunnel;
 import java.util.UUID;
 
 /**
- *
+ * Sent to a TalkerEndpoint, to please establish a new connection with the enclosed id.
  * @author erhannis
  */
 public class TunnelConnectionRequestMessage extends TunnelConnectionMessage {

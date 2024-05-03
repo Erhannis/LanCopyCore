@@ -14,11 +14,14 @@ import com.erhannis.lancopy.refactor2.MessageHandler;
 import com.erhannis.lancopy.refactor2.NodeManager;
 import com.erhannis.lancopy.refactor2.OutgoingTransferState;
 import com.erhannis.lancopy.refactor2.tunnel.TunnelManager;
+import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.Pair;
+import com.erhannis.mathnstuff.utils.Factory;
 import java.io.IOException;
 import java.io.InputStream;
 import java.util.ArrayList;
 import java.util.Collection;
+import java.util.HashSet;
 import java.util.List;
 import java.util.UUID;
 import java.util.function.Function;
@@ -111,21 +114,47 @@ public class LanCopyNet {
             new AdGenerator(dataOwner, rxAdOut, lcommsIn),
             new CommsManager(dataOwner, lcommsOut, rxAdOut, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryToTrackerOut, summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusOut, subscribeIn, showLocalFingerprintOut, enrollCommChannelIn, txOtsIn, rxUnhandledMessageOut, summaryCall.getClient(), adCall.getClient(), rosterCall.getClient(), localDataCall.getClient(), dataCall.getServer(), confirmationCall.getClient()),
             () -> { // Extra message handlers
+                // Like, as in, message objects that come in from other nodes and don't match anything in the CommsManager's gauntlet
+
                 //NEXT //DUMMY Move to separate class probably
                 //NEXT //DUMMY Shutdown?
+                
                 Alternative alt = new Alternative(new Guard[]{rxUnhandledMessageIn});
-                ArrayList<MessageHandler> messageHandlers = new ArrayList<>();
-                //PERIODIC Extra message handlers go here
-                // Like, as in, message objects that come in from other nodes and don't match anything in the CommsManager's gauntlet
-                messageHandlers.add(new TunnelManager(txOtsOut, confirmationCall.getClient()));
+                FactoryHashMap<UUID, ArrayList<MessageHandler>> perNodeMessageHandlers = new FactoryHashMap<>(new Factory<UUID, ArrayList<MessageHandler>>() {
+                    @Override
+                    public ArrayList<MessageHandler> construct(UUID input) {
+                        ArrayList<MessageHandler> mhs = new ArrayList<>();
+                        boolean tunnelsEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tunnels.enabled", true); //THINK Maybe default to false
+                        if (tunnelsEnabled) {
+                            mhs.add(new TunnelManager(input, txOtsOut, confirmationCall.getClient()));
+                        }
+                        //PERIODIC Extra message handlers go here, or in globalMessageHandlers
+                        return mhs;
+                    }
+                });
+                ArrayList<MessageHandler> globalMessageHandlers = new ArrayList<>();
+                
                 while (true) {
                     switch (alt.priSelect()) {
                         case 0: { // rxUnhandledMessageIn
                             Pair<NodeManager.CRToken, Object> dmsg = rxUnhandledMessageIn.read();
                             handleMessage: {
-                                for (MessageHandler handler : messageHandlers) {
-                                    if (handler.handleMessage(dmsg)) {
-                                        break handleMessage;
+                                for (MessageHandler handler : perNodeMessageHandlers.get(dmsg.a.nodeId)) {
+                                    try {
+                                        if (handler.handleMessage(dmsg)) {
+                                            break handleMessage;
+                                        }
+                                    } catch (Throwable t) {
+                                        t.printStackTrace();
+                                    }
+                                }
+                                for (MessageHandler handler : globalMessageHandlers) {
+                                    try {
+                                        if (handler.handleMessage(dmsg)) {
+                                            break handleMessage;
+                                        }
+                                    } catch (Throwable t) {
+                                        t.printStackTrace();
                                     }
                                 }
                                 System.err.println("ERR Got unhandled msg: " + dmsg);

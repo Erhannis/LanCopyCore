@@ -23,9 +23,12 @@ import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelErrorMessage;
 import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelRequestMessage;
 import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelSuccessMessage;
 import com.erhannis.lancopy.refactor2.tls.ContextFactory;
+import com.erhannis.mathnstuff.MeUtils;
 import com.erhannis.mathnstuff.components.OptionsFrame;
 import com.erhannis.mathnstuff.utils.Options;
 import com.esotericsoftware.kryo.Kryo;
+import com.esotericsoftware.kryo.Registration;
+import com.esotericsoftware.kryo.Serializer;
 import com.esotericsoftware.kryo.io.Input;
 import com.esotericsoftware.kryo.io.Output;
 import de.javakaffee.kryoserializers.UUIDSerializer;
@@ -36,6 +39,7 @@ import java.io.IOException;
 import java.security.GeneralSecurityException;
 import java.security.SecureRandom;
 import java.util.ArrayList;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.UUID;
 import java.util.concurrent.TimeUnit;
@@ -44,6 +48,7 @@ import java.util.logging.Level;
 import java.util.logging.Logger;
 import javax.naming.InvalidNameException;
 import jcsp.lang.ChannelOutputInt;
+import org.apache.commons.codec.digest.DigestUtils;
 import org.spongycastle.operator.OperatorCreationException;
 
 /**
@@ -61,37 +66,72 @@ public class DataOwner {
     public final Options options;
     
     public final SecureRandom rand;
-
+    
     static private final ThreadLocal<Kryo> kryos = new ThreadLocal<Kryo>() {
+        private final HashMap<Kryo, HashSet<Integer>> registeredIds = new HashMap<>();
+        
+        private void checkCollision(Kryo kryo, Registration r) {
+            if (!registeredIds.computeIfAbsent(kryo, (k) -> new HashSet<Integer>()).add(r.getId())) {
+                throw new RuntimeException("ERR Kryo ID collision: "+r.getId());
+            }
+        }
+        
+        private void kryoRegister(Kryo kryo, Class clazz) {
+            kryoRegister(kryo, clazz, false);
+        }
+
+        private void kryoRegister(Kryo kryo, Class clazz, Serializer s) {
+            Registration r;
+            String name = clazz.getTypeName();
+            r = kryo.register(clazz, s);
+            System.out.println("Kryo registered " + name + " as " + r.getId());
+            checkCollision(kryo, r);
+        }
+
+        private void kryoRegister(Kryo kryo, Class clazz, boolean hashId) {
+            Registration r;
+            String name = clazz.getTypeName();
+            if (hashId) {
+                byte[] hash = DigestUtils.sha256(name);
+                int id = Math.abs(MeUtils.colorBytesToInt(hash[0], hash[1], hash[2], hash[3])); //CHECK I'm not SURE this isn't bugged
+                r = kryo.register(clazz, id);
+            } else {
+                r = kryo.register(clazz);
+            }
+            System.out.println("Kryo registered " + name + " as " + r.getId());
+            checkCollision(kryo, r);
+        }
+    
         protected Kryo initialValue() {
             Kryo kryo = new Kryo();
 
-            //PERIODIC Update this list whenever you add new message types
+            //PERIODIC Update this list whenever you add new message types.  Add to end of list to preserve backwards compatibility.
             kryo.setReferences(true);
-            kryo.register(Advertisement.class);
-            kryo.register(Comm.class);
-            kryo.register(TcpComm.class); //TODO Move these elsewhere?
-            kryo.register(Summary.class);
-            kryo.register(Message.class);
-            kryo.register(IdentificationMessage.class);
-            kryo.register(DataRequestMessage.class);
-            kryo.register(DataStartMessage.class);
-            kryo.register(DataChunkMessage.class);
-            kryo.register(ArrayList.class);
-            kryo.register(UUID.class, new UUIDSerializer());
-            kryo.register(byte[].class);
-            kryo.register(TunnelRequestMessage.TunnelDirection.class);
-            kryo.register(TunnelRequestMessage.TunnelProtocol.class);
-            kryo.register(TunnelRequestMessage.class);
-            kryo.register(TunnelSuccessMessage.class);
-            kryo.register(TunnelErrorMessage.class);
-            kryo.register(TunnelConnectionMessage.class);
-            kryo.register(TunnelConnectionRequestMessage.class);
-            kryo.register(TunnelConnectionSuccessMessage.class);
-            kryo.register(TunnelConnectionErrorMessage.class);
-            kryo.register(TunnelConnectionDataMessage.class);
-            UnmodifiableCollectionsSerializer.registerSerializers(kryo);
+            kryoRegister(kryo, Advertisement.class);
+            kryoRegister(kryo, Comm.class);
+            kryoRegister(kryo, TcpComm.class); //TODO Move these elsewhere?
+            kryoRegister(kryo, Summary.class);
+            kryoRegister(kryo, Message.class);
+            kryoRegister(kryo, IdentificationMessage.class);
+            kryoRegister(kryo, DataRequestMessage.class);
+            kryoRegister(kryo, DataStartMessage.class);
+            kryoRegister(kryo, DataChunkMessage.class);
+            kryoRegister(kryo, ArrayList.class);
+            kryoRegister(kryo, UUID.class, new UUIDSerializer());
+            kryoRegister(kryo, byte[].class);
+            UnmodifiableCollectionsSerializer.registerSerializers(kryo); // Doesn't get logged like the others
             //kryo.register(java.util.Collections.UnmodifiableRandomAccessList.class);
+            
+            kryoRegister(kryo, TunnelRequestMessage.TunnelDirection.class, true);
+            kryoRegister(kryo, TunnelRequestMessage.TunnelProtocol.class, true);
+            kryoRegister(kryo, TunnelRequestMessage.class, true);
+            kryoRegister(kryo, TunnelSuccessMessage.class, true);
+            kryoRegister(kryo, TunnelErrorMessage.class, true);
+            kryoRegister(kryo, TunnelConnectionMessage.class, true);
+            kryoRegister(kryo, TunnelConnectionRequestMessage.class, true);
+            kryoRegister(kryo, TunnelConnectionSuccessMessage.class, true);
+            kryoRegister(kryo, TunnelConnectionErrorMessage.class, true);
+            kryoRegister(kryo, TunnelConnectionDataMessage.class, true);
 
             return kryo;
         }
