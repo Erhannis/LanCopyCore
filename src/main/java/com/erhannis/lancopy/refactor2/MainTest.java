@@ -151,7 +151,8 @@ public class MainTest {
         List<Comm> lComms = Lists.newArrayList(new TcpComm(null, "localhost", localPort));
         Advertisement lad = new Advertisement(dataOwner.ID, System.currentTimeMillis(), lComms, true, null);
 
-        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null, null, null, null);
+        //RAINY This is almost certainly broken, what with all the nulls....
+        CommsManager cm = new CommsManager(dataOwner, lcommsOut, radOut, aadIn, rsumOut, lsumIn, commStatusOut, subscribeIn, null, null, null, null, null, null, null, null, null, null);
 
         new ProcessManager(new NameParallel(new CSProcess[]{
             cm,

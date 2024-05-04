@@ -510,6 +510,7 @@ public class TunnelManager implements CSProcess {
             return true;
         } else if (m0 instanceof TunnelConnectionDataMessage) {
             TunnelConnectionDataMessage m = (TunnelConnectionDataMessage)m0;
+            System.out.println("TM rx TCDM " + m);
             try {
                 UUID epid = connectionsToEndpoints.get(m.connectionId).thisId;
                 //THINK Maybe check index or something?
@@ -549,6 +550,8 @@ public class TunnelManager implements CSProcess {
         txOtsOut.write(new OTSSingle(UUID.randomUUID(), nodeId, r));
     }
 
+    private int idx = 0;
+    
     @Override
     public void run() {
         Alternative alt = new Alternative(new Guard[]{localHandlerServer, handlerServer, internalRxDataIn});
@@ -580,11 +583,13 @@ public class TunnelManager implements CSProcess {
                         Endpoint2ManagerMessage msg0 = internalRxDataIn.read();
                         if (msg0 instanceof E2MConnectMessage) {
                             E2MConnectMessage msg = (E2MConnectMessage) msg0;
+                            connectionsToEndpoints.put(msg.connectionId, localEndpoints.get(endpointToLocal.get(msg.endpointId)));
                             txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionRequestMessage(msg.connectionId, msg.endpointId)));
                         } else if (msg0 instanceof E2MDataMessage) {
                             E2MDataMessage msg = (E2MDataMessage) msg0;
                             //RAINY index
-                            txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionDataMessage(-1, msg.data, msg.connectionId)));
+                            //NEXT Somehow these are being sent out of order.  How on earth how?
+                            txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionDataMessage(idx++, msg.data, msg.connectionId)));
                         } else if (msg0 instanceof E2MErrorMessage) {
                             E2MErrorMessage msg = (E2MErrorMessage) msg0;
                             if (msg.connectionId == null) {

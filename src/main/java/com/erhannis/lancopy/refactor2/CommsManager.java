@@ -46,7 +46,9 @@ import java.nio.channels.SocketChannel;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.Iterator;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map.Entry;
 import java.util.Objects;
@@ -428,8 +430,8 @@ public class CommsManager implements CSProcess {
             rebroadcastTimer.setAlarm(rebroadcastTimer.read() + rebroadcastInterval);
         }
         DisableableTimer transferTimer = new DisableableTimer();
-        HashMap<UUID, IncomingTransferState> incomingTransfers = new HashMap<>();
-        HashMap<UUID, OutgoingTransferState> outgoingTransfers = new HashMap<>();
+        LinkedHashMap<UUID, IncomingTransferState> incomingTransfers = new LinkedHashMap<>();
+        LinkedHashMap<UUID, OutgoingTransferState> outgoingTransfers = new LinkedHashMap<>(); //NEXT Order these, please
         Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, txOtsIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, internalShowLocalFingerprintIn, dataServer, rebroadcastTimer, transferTimer});
         while (true) {
             try {
@@ -668,6 +670,12 @@ public class CommsManager implements CSProcess {
                     case 12: { // transferTimer
                         //NEXT Add other (e.g. tunnel) requests to set?
                         boolean somethingSent = false;
+                        
+                        // This isn't officially necessary - but to maintain relative ordering, I want to make sure outgoing messages, to a single node, are sent in order
+                        //RAINY Though, ideally this would be handled differently.
+                        HashSet<NodeManager.NMInterface> blockedNms = new HashSet<>();
+                        
+                        
                         for (Iterator<Entry<UUID, OutgoingTransferState>> iter = outgoingTransfers.entrySet().iterator(); iter.hasNext();) {
                             Entry<UUID, OutgoingTransferState> entry = iter.next();
                             UUID correlationId = entry.getKey();
@@ -677,7 +685,12 @@ public class CommsManager implements CSProcess {
                                 System.err.println("CM Missing NM?? " + state.targetId);
                                 continue;
                             } else {
+                                if (blockedNms.contains(nm)) {
+                                    //LEAK I think this might be heavy, when transferring many things or s.t.
+                                    continue;
+                                }
                                 if (!nm.txMsgOut.shouldWrite()) {
+                                    blockedNms.add(nm);
                                     System.out.println("CM channel not ready to rx; skipping...");
                                     continue;
                                 }
