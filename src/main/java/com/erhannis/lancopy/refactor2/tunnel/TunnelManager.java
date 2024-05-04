@@ -44,12 +44,14 @@ import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
 
 /*
-Between two nodes, there can exist a tunnel.
+Between two nodes, there can exist zero or more tunnels.
 Each tunnel has two endpoints: one listener, and one talker.
 For a tunnel T, between nodes X and Y, X has one endpoint and Y has the other.
 Each tunnel can host multiple connections.
 Each endpoint has a UUID.
 //THINK Should they, though?  Should the tunnel as a whole have its own id?
+
+...Wait a minute.  I set up this class to permit multiple endpoints, but it only needs...ah, wait, I guess you could forward more than one port, say.
 
 listenerEnd vs talkerEnd
   (though once a connection is established, they both do both)
@@ -87,14 +89,51 @@ TunnelConnectionDataMessage
  * @author erhannis
  */
 public class TunnelManager implements CSProcess {
+    private static abstract class Endpoint2ManagerMessage {
+        public final UUID endpointId; //THINK I'm not sure what this endpoint means.  Local, or remote, or irrelevant?
+
+        public Endpoint2ManagerMessage(UUID endpointId) {
+            this.endpointId = endpointId;
+        }
+    }
+    
+    private static class E2MConnectMessage extends Endpoint2ManagerMessage {
+        public final UUID connectionId;
+        
+        public E2MConnectMessage(UUID endpointId, UUID connectionId) {
+            super(endpointId);
+            this.connectionId = connectionId;
+        }
+    }
+
+    private static class E2MDataMessage extends Endpoint2ManagerMessage {
+        public final UUID connectionId;
+        public final byte[] data;
+
+        public E2MDataMessage(UUID endpointId, UUID connectionId, byte[] data) {
+            super(endpointId);
+            this.connectionId = connectionId;
+            this.data = data;
+        }
+    }
+
+    private static class E2MErrorMessage extends Endpoint2ManagerMessage {
+        public final UUID connectionId;
+        
+        public E2MErrorMessage(UUID endpointId, UUID connectionId) {
+            super(endpointId);
+            this.connectionId = connectionId;
+        }        
+    }
+    
     //DUMMY I'm really not sure these shut down properly, or at all
     public static abstract class Endpoint implements CSProcess {
         public final UUID thisId;
         public final UUID pairId;
-        public final ChannelOutput<Pair<UUID, byte[]>> rxDataOut; // Connection id, data
+        public final ChannelOutput<Endpoint2ManagerMessage> rxDataOut; // Connection id, data
         public final AltingChannelInput<Pair<UUID, byte[]>> txDataIn; // Connection id, data
 
-        public Endpoint(UUID thisId, UUID pairId, ChannelOutput<Pair<UUID, byte[]>> rxDataOut, AltingChannelInput<Pair<UUID, byte[]>> txDataIn) {
+        public Endpoint(UUID thisId, UUID pairId, ChannelOutput<Endpoint2ManagerMessage> rxDataOut, AltingChannelInput<Pair<UUID, byte[]>> txDataIn) {
             this.thisId = thisId;
             this.pairId = pairId;
             this.rxDataOut = rxDataOut;
@@ -103,12 +142,14 @@ public class TunnelManager implements CSProcess {
         
         void handleConnection(UUID conId, Socket clientSocket, AltingChannelInput<byte[]> internalTxDataIn) {
             //RAINY Do something with socket info?
+            System.out.println("TM.EP "+thisId+"_"+conId+" handleConnection "+clientSocket);
             try {
                 ProcessManager talker = new ProcessManager(() -> {
                     try (OutputStream out = clientSocket.getOutputStream()) {
 
                         while (true) {
                             byte[] data = internalTxDataIn.read();
+                            System.out.println("TM.EP "+thisId+"_"+conId+" write: "+new String(data, "US-ASCII"));
                             out.write(data);
                             out.flush();
                         }
@@ -116,6 +157,7 @@ public class TunnelManager implements CSProcess {
                         e.printStackTrace();
                         //CHECK Should I close the connection or something?
                     }
+                    System.out.println("TM.EP "+thisId+"_"+conId+" talker ended");
                 });
                 
                 ProcessManager listener = new ProcessManager(() -> {
@@ -128,11 +170,13 @@ public class TunnelManager implements CSProcess {
                             //System.out.println(prefix+new String(buffer, 0, bytesRead, Charset.forName("ISO-8859-1")));
                             byte[] bout = new byte[bytesRead];
                             System.arraycopy(buffer, 0, bout, 0, bytesRead);
-                            rxDataOut.write(Pair.gen(conId, bout));
+                            System.out.println("TM.EP "+thisId+"_"+conId+" read: "+new String(bout, "US-ASCII"));
+                            rxDataOut.write(new E2MDataMessage(thisId, conId, bout));
                         }
                     } catch (IOException e) {
                        e.printStackTrace();
                     }
+                    System.out.println("TM.EP "+thisId+"_"+conId+" listener ended");
                 });
 
                 talker.start();
@@ -141,11 +185,13 @@ public class TunnelManager implements CSProcess {
                 talker.join(); //MISC Not sure if this is where this should go
                 listener.join();
                 
+                System.out.println("TM.EP "+thisId+"_"+conId+" both ended");
+
                 clientSocket.close();
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            rxDataOut.write(null); //DUMMY Handle
+            rxDataOut.write(new E2MErrorMessage(thisId, conId)); //DUMMY Handle
         }
 
         AltingFunctionChannel<UUID, AltingChannelInput<byte[]>> getTxDataInChannelCall = new AltingFunctionChannel<>(true);
@@ -199,28 +245,34 @@ public class TunnelManager implements CSProcess {
     public static class ListenerEndpoint extends Endpoint {
         public final int listeningPort;
 
-        public ListenerEndpoint(UUID thisId, UUID pairId, int listeningPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Pair<UUID, byte[]>> rxDataOut) {
+        public ListenerEndpoint(UUID thisId, UUID pairId, int listeningPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Endpoint2ManagerMessage> rxDataOut) {
             super(thisId, pairId, rxDataOut, txDataIn);
             this.listeningPort = listeningPort;
+            System.out.println("TM.LE "+thisId+" created ("+listeningPort+")");
         }
         
         @Override
         public void run() {
             super.run();
-            try (ServerSocket serverSocket = new ServerSocket(listeningPort)) {
-                System.out.println("TM.LE "+thisId+" Listening on port " + listeningPort);
-                
-                FCClient<UUID, AltingChannelInput<byte[]>> getTxDataInChannelClient = getTxDataInChannelCall.getClient();
-                while (true) {
-                    Socket clientSocket = serverSocket.accept();
-                    UUID conId = UUID.randomUUID();
-                    System.out.println("TM.LE "+thisId+" RX connection "+conId+" on port " + listeningPort + " ; " + clientSocket);
-                    AltingChannelInput<byte[]> internalTxDataIn = getTxDataInChannelClient.call(conId);
-                    new ProcessManager(() -> handleConnection(conId, clientSocket, internalTxDataIn)).start();
+            while (true) {
+                try (ServerSocket serverSocket = new ServerSocket(listeningPort)) {
+                    System.out.println("TM.LE "+thisId+" Listening on port " + listeningPort);
+
+                    FCClient<UUID, AltingChannelInput<byte[]>> getTxDataInChannelClient = getTxDataInChannelCall.getClient();
+                    while (true) {
+                        Socket clientSocket = serverSocket.accept();
+                        UUID conId = UUID.randomUUID();
+                        System.out.println("TM.LE "+thisId+" RX connection "+conId+" on port " + listeningPort + " ; " + clientSocket);
+                        AltingChannelInput<byte[]> internalTxDataIn = getTxDataInChannelClient.call(conId);
+                        rxDataOut.write(new E2MConnectMessage(pairId, conId));
+                        new ProcessManager(() -> handleConnection(conId, clientSocket, internalTxDataIn)).start();
+                    }
+                } catch (Throwable t) {
+                    //THINK Should I report error?
+                    //rxDataOut.write(new E2MErrorMessage(thisId, null));
+                    System.err.println("LE got error; continuing " + this.thisId);
+                    t.printStackTrace();
                 }
-            } catch (Throwable t) {
-                //CHECK Should I restart the endpoint or st?
-                throw new RuntimeException(t);
             }
         }
     }
@@ -229,25 +281,25 @@ public class TunnelManager implements CSProcess {
         public final String talkingAddress;
         public final int talkingPort;
 
-        public TalkerEndpoint(UUID thisId, UUID pairId, String talkingAddress, int talkingPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Pair<UUID, byte[]>> rxDataOut) {
+        public TalkerEndpoint(UUID thisId, UUID pairId, String talkingAddress, int talkingPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Endpoint2ManagerMessage> rxDataOut) {
             super(thisId, pairId, rxDataOut, txDataIn);
             this.talkingAddress = talkingAddress;
             this.talkingPort = talkingPort;
+            System.out.println("TM.TE "+thisId+" created (" + talkingAddress + ":" + talkingPort + ")");
         }
         
         public void openConnection(UUID conId) throws IOException {
-            try (Socket targetSocket = new Socket(talkingAddress, talkingPort)) {
-                System.out.println("TM.TE "+thisId+" Connected to " + talkingAddress + ":" + talkingPort);
+            Socket targetSocket = new Socket(talkingAddress, talkingPort);
+            System.out.println("TM.TE "+thisId+" Connected to " + talkingAddress + ":" + talkingPort);
 
-                FCClient<UUID, AltingChannelInput<byte[]>> getTxDataInChannelClient = getTxDataInChannelCall.getClient();
+            FCClient<UUID, AltingChannelInput<byte[]>> getTxDataInChannelClient = getTxDataInChannelCall.getClient();
 
-                System.out.println("TM.TE "+thisId+" TX connection "+conId+" on address "+talkingAddress+":"+talkingPort+" ; "+targetSocket);
-                AltingChannelInput<byte[]> internalTxDataIn = getTxDataInChannelClient.call(conId);
-                if (internalTxDataIn == null) {
-                    throw new IOException("Duplicate connection ID");
-                }
-                new ProcessManager(() -> handleConnection(conId, targetSocket, internalTxDataIn)).start();
+            System.out.println("TM.TE "+thisId+" TX connection "+conId+" on address "+talkingAddress+":"+talkingPort+" ; "+targetSocket);
+            AltingChannelInput<byte[]> internalTxDataIn = getTxDataInChannelClient.call(conId);
+            if (internalTxDataIn == null) {
+                throw new IOException("Duplicate connection ID");
             }
+            new ProcessManager(() -> handleConnection(conId, targetSocket, internalTxDataIn)).start();
         }
         
         @Override
@@ -260,9 +312,9 @@ public class TunnelManager implements CSProcess {
     public final UUID nodeId;
     
     // private final AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn; // ...give to endpoints?
-    private HashMap<UUID, ChannelOutput<Pair<UUID, byte[]>>> internalTxDataOuts; // EndpointId -> channel(connection, data). In loop, send data to an endpoint
-    private final AltingChannelInput<Pair<UUID, byte[]>> internalRxDataIn; // (connection, data) put on loop //NEXT Send connection request on first message, I guess
-    private final ChannelOutput<Pair<UUID, byte[]>> internalRxDataOut; // (connection, data) give to endpoints
+    private final HashMap<UUID, ChannelOutput<Pair<UUID, byte[]>>> internalTxDataOuts = new HashMap<>(); // EndpointId -> channel(connection, data). In loop, send data to an endpoint
+    private final AltingChannelInput<Endpoint2ManagerMessage> internalRxDataIn; // (connection, data) put on loop //NEXT Send connection request on first message, I guess
+    private final ChannelOutput<Endpoint2ManagerMessage> internalRxDataOut; // (connection, data) give to endpoints
     
     public AltingFCServer<LocalMessage,Boolean> localHandlerServer;
     public AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer;
@@ -298,8 +350,8 @@ public class TunnelManager implements CSProcess {
         this.handlerServer = handlerServer;
         this.txOtsOut = txOtsOut;
         this.confirmationClient = confirmationClient;
-
-        Any2OneChannel<Pair<UUID, byte[]>> internalRxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
+                
+        Any2OneChannel<Endpoint2ManagerMessage> internalRxDataChannel = Channel.<Endpoint2ManagerMessage> any2one(new InfiniteBuffer<>());
         this.internalRxDataIn = internalRxDataChannel.in();
         this.internalRxDataOut = JcspUtils.logDeadlock(internalRxDataChannel.out());
     }
@@ -336,7 +388,7 @@ public class TunnelManager implements CSProcess {
                             Any2OneChannel<Pair<UUID, byte[]>> internalTxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
                             AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn = internalTxDataChannel.in();
                             internalTxDataOuts.put(responseTunnelId, JcspUtils.logDeadlock(internalTxDataChannel.out()));
-                            ep = new ListenerEndpoint(m.initiatorTunnelId, responseTunnelId, m.incomingPort, internalTxDataIn, internalRxDataOut);
+                            ep = new ListenerEndpoint(responseTunnelId, m.initiatorTunnelId, m.incomingPort, internalTxDataIn, internalRxDataOut);
                             localEndpoints.put(responseTunnelId, ep);
                             break;
                         }
@@ -345,7 +397,7 @@ public class TunnelManager implements CSProcess {
                             Any2OneChannel<Pair<UUID, byte[]>> internalTxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
                             AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn = internalTxDataChannel.in();
                             internalTxDataOuts.put(responseTunnelId, JcspUtils.logDeadlock(internalTxDataChannel.out()));
-                            ep = new TalkerEndpoint(m.initiatorTunnelId, responseTunnelId, m.outgoingAddress, m.outgoingPort, internalTxDataIn, internalRxDataOut);
+                            ep = new TalkerEndpoint(responseTunnelId, m.initiatorTunnelId, m.outgoingAddress, m.outgoingPort, internalTxDataIn, internalRxDataOut);
                             localEndpoints.put(responseTunnelId, ep);
                             break;
                         }
@@ -399,7 +451,7 @@ public class TunnelManager implements CSProcess {
                 // Map both IDs to our initial endpoint id
                 endpointToLocal.put(m.responseTunnelId, r.initiatorTunnelId);
                 endpointToLocal.put(r.initiatorTunnelId, r.initiatorTunnelId);
-                asdf;
+                //asdf;
             } else {
                 //THINK Not clear which endpoint ID to use
                 txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelErrorMessage(m.initiatorTunnelId, "No such request present")));
@@ -415,30 +467,46 @@ public class TunnelManager implements CSProcess {
             Endpoint ep = localEndpoints.remove(l);
             endpointToLocal.remove(l);
             endpointToLocal.remove(r);
-            ep.close(); //NEXT close
+            //ep.close(); //NEXT close
             //NEXT Remove all connections from connectionsToEndpoints
             return true;
         } else if (m0 instanceof TunnelConnectionRequestMessage) {
             TunnelConnectionRequestMessage m = (TunnelConnectionRequestMessage)m0;
-            System.out.println("Tunnel connection request: " + m);
-            Endpoint ep = localEndpoints.get(endpointToLocal.get(m.targetTunnelId));
-            if (ep == null) {
-                txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelConnectionErrorMessage(m.connectionId, "No such endpoint present")));
-                return true;
+            try {
+                System.out.println("Tunnel connection request: " + m);
+                Endpoint ep = localEndpoints.get(endpointToLocal.get(m.targetTunnelId));
+                if (ep == null) {
+                    txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelConnectionErrorMessage(m.connectionId, "No such endpoint present")));
+                    return true;
+                }
+                if (connectionsToEndpoints.get(m.connectionId) != null) {
+                    //THINK If the connection ID already exists, should we error or should we report success?
+                    //THINK If we error, should we close this side of the connection?  We're liable to end up desynchronized.
+                    txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelConnectionErrorMessage(m.connectionId, "Connection ID already exists")));
+                    return true;
+                }
+                if (!(ep instanceof TalkerEndpoint)) {
+                    txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelConnectionErrorMessage(m.connectionId, "Endpoint is not a talker (presumably a listener)")));
+                    return true;
+                }
+                TalkerEndpoint tep = (TalkerEndpoint)ep;
+                tep.openConnection(m.connectionId);
+                connectionsToEndpoints.put(m.connectionId, ep);
+                txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelConnectionSuccessMessage(m.connectionId)));
+            } catch (Exception e) {
+                e.printStackTrace();
+                txOtsOut.write(new OTSSingle(UUID.randomUUID(), token.nodeId, new TunnelConnectionErrorMessage(m.connectionId, "Error opening connection")));
             }
-            //NEXT Check existing connection?
-            asdf;
             return true;
         } else if (m0 instanceof TunnelConnectionSuccessMessage) {
             TunnelConnectionSuccessMessage m = (TunnelConnectionSuccessMessage)m0;
             //THINK Should this even be a thing?  Or should a connection be assumed until proven otherwise?
             //NEXT //DUMMY Make connection or st
-            asdf;
+            //asdf;
             return true;
         } else if (m0 instanceof TunnelConnectionErrorMessage) {
             TunnelConnectionErrorMessage m = (TunnelConnectionErrorMessage)m0;
-            //NEXT //DUMMY Close any connection
-            asdf;
+            cleanUpConnection(m.connectionId);
             return true;
         } else if (m0 instanceof TunnelConnectionDataMessage) {
             TunnelConnectionDataMessage m = (TunnelConnectionDataMessage)m0;
@@ -450,7 +518,7 @@ public class TunnelManager implements CSProcess {
                 //NEXT Send error or something, close channels
                 throw e;
             }
-            asdf;
+            //asdf;
             return true;
         } else {
             // Unhandled
@@ -458,9 +526,17 @@ public class TunnelManager implements CSProcess {
         }
     }
     
+    private void cleanUpConnection(UUID connectionId) {
+        //NEXT
+    }
+    
     private boolean handleLocalMessage(Object msg) {
+        if (msg instanceof LocalMessage) {
+            msg = ((LocalMessage)msg).payload;
+        }
         if (msg instanceof TunnelRequestMessage) {
             TunnelRequestMessage m = (TunnelRequestMessage)msg;
+            pendingTunnels.put(m.initiatorTunnelId, m);
             initiateTunnelRequest(m);
             return true;
         } else {
@@ -501,11 +577,26 @@ public class TunnelManager implements CSProcess {
                         break;
                     }
                     case 2: { // internalRxDataIn
-                        // connection, data
-                        Pair<UUID, byte[]> msg = internalRxDataIn.read();
-                        // Pass back out
-                        //RAINY index
-                        txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionDataMessage(-1, msg.b, msg.a)));
+                        Endpoint2ManagerMessage msg0 = internalRxDataIn.read();
+                        if (msg0 instanceof E2MConnectMessage) {
+                            E2MConnectMessage msg = (E2MConnectMessage) msg0;
+                            txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionRequestMessage(msg.connectionId, msg.endpointId)));
+                        } else if (msg0 instanceof E2MDataMessage) {
+                            E2MDataMessage msg = (E2MDataMessage) msg0;
+                            //RAINY index
+                            txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionDataMessage(-1, msg.data, msg.connectionId)));
+                        } else if (msg0 instanceof E2MErrorMessage) {
+                            E2MErrorMessage msg = (E2MErrorMessage) msg0;
+                            if (msg.connectionId == null) {
+                                System.err.println("Got general endpoint error: "+msg);
+                                //DUMMY What to do here?  Clean things up?  Restart?
+                            } else {
+                                txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionErrorMessage(msg.connectionId, "Connection error (closed?)")));
+                                cleanUpConnection(msg.connectionId);
+                            }
+                        } else {
+                            System.err.println("Got unhandled E2M message: "+msg0);
+                        }
                         break;
                     }
                 }

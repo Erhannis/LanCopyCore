@@ -26,6 +26,6 @@ public class TunnelConnectionErrorMessage extends TunnelConnectionMessage {
     @Override
     public String toString() {
         //MISC Not escaped
-        return "TCEM{\""+message+"\","+super.toString()+"}";
+        return "TCEM{\""+message+"\";"+super.toString()+"}";
     }
 }

@@ -11,7 +11,7 @@ import java.util.UUID;
  * @author erhannis
  */
 public abstract class TunnelConnectionMessage {
-    public final UUID connectionId;
+    public final UUID connectionId; //NEXT I think this may need to go away
 
     public TunnelConnectionMessage(UUID connectionId) {
         this.connectionId = connectionId;

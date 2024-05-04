@@ -195,7 +195,7 @@ public class LanCopyNet {
                                         t.printStackTrace();
                                     }
                                 }
-                                System.err.println("ERR Got unhandled msg: " + msg);
+                                System.err.println("ERR Got unhandled local msg: " + msg);
                             }
                             break;
                         }
@@ -220,7 +220,8 @@ public class LanCopyNet {
                                         t.printStackTrace();
                                     }
                                 }
-                                System.err.println("ERR Got unhandled msg: " + dmsg);
+                                //RAINY We're getting e.g. "P{com.erhannis.lancopy.refactor2.NodeManager$CRToken@62cac7f8,null}" here; what's sending them and why?  Is it just some kind of ping, perhaps?
+                                System.err.println("ERR Got unhandled msg(2): " + dmsg);
                             }
                             break;
                         }

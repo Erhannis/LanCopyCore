@@ -32,6 +32,6 @@ public class DataStartMessage extends Message {
     
     @Override
     public String toString() {
-        return "DSM{"+mimeType+",["+data.length+"],"+eom+"," +super.toString()+"}";
+        return "DSM{"+mimeType+",["+data.length+"],"+eom+";" +super.toString()+"}";
     }
 }

@@ -40,6 +40,6 @@ public class DataChunkMessage extends Message {
 
     @Override
     public String toString() {
-        return "DCM{"+index+",["+data.length+"],"+eom+","+super.toString()+"}";
+        return "DCM{"+index+",["+data.length+"],"+eom+";"+super.toString()+"}";
     }
 }

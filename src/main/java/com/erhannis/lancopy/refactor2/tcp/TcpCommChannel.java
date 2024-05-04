@@ -122,6 +122,6 @@ public class TcpCommChannel extends CommChannel {
 
     @Override
     public String toString() {
-        return "TcpChan{" + isOpen() + "," + super.toString() + "}";
+        return "TcpChan{" + isOpen() + ";" + super.toString() + "}";
     }
 }

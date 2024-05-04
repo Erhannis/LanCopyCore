@@ -28,6 +28,6 @@ public class TunnelConnectionDataMessage extends TunnelConnectionMessage {
 
     @Override
     public String toString() {
-        return "DCDM{"+index+",["+data.length+"],"+super.toString()+"}";
+        return "TCDM{"+index+",["+data.length+"];"+super.toString()+"}";
     }    
 }

@@ -25,6 +25,6 @@ public class TunnelConnectionRequestMessage extends TunnelConnectionMessage {
     
     @Override
     public String toString() {
-        return "TCRM{"+targetTunnelId+","+super.toString()+"}";
+        return "TCRM{"+targetTunnelId+";"+super.toString()+"}";
     }        
 }

@@ -9,6 +9,7 @@ package com.erhannis.lancopy.refactor2.messages.local;
  * @author erhannis
  */
 public abstract class LocalMessage<K, V> {
+    //THINK Not sure how I feel about these being here.  Maybe they should just be in subclasses only.
     public final K routing;
     public final V payload;
 

@@ -25,6 +25,6 @@ public class IdentificationMessage extends Message {
 
     @Override
     public String toString() {
-        return "IM{"+super.toString()+"}";
+        return "IM{;"+super.toString()+"}";
     }
 }

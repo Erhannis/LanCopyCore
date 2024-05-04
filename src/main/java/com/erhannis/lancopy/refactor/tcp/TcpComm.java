@@ -50,7 +50,7 @@ public class TcpComm extends Comm {
 
     @Override
     public String toString() {
-        return super.toString()+"{"+host+":"+port+"}";
+        return super.toString()+"{"+host+":"+port+"}"; //THINK Include super?
     }
 
     @Override
