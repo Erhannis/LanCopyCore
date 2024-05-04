@@ -18,7 +18,7 @@ import java.util.stream.Collectors;
  * @author erhannis
  */
 public class Advertisement {
-    public final UUID id;
+    public final UUID id; // Id of associated node
     public final long timestamp;
     public final List<Comm> comms;
     public final boolean encrypted;

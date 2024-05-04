@@ -14,7 +14,7 @@ import java.util.UUID;
  * @author erhannis
  */
 public class Summary {
-    public final UUID id;
+    public final UUID id; // Id of associated node
     public final long timestamp;
     public final String summary;
 

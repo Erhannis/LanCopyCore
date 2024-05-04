@@ -61,6 +61,7 @@ public class DataOwner {
      */
     public static final UUID LANCOPY_SERVICE = UUID.fromString("66e8b86b-5868-4b8e-8f6f-d2845616d72c");
     
+    // This is the ID of the local node
     public final UUID ID;//UUID.randomUUID();
 
     public final Options options;

@@ -12,6 +12,9 @@ import com.erhannis.lancopy.refactor2.CommChannel;
 import com.erhannis.lancopy.refactor2.CommsManager;
 import com.erhannis.lancopy.refactor2.NodeManager;
 import com.erhannis.lancopy.refactor2.OutgoingTransferState;
+import com.erhannis.lancopy.refactor2.messages.local.LocalMessage;
+import com.erhannis.lancopy.refactor2.messages.local.NodeKeyedLocalMessage;
+import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelRequestMessage;
 import com.erhannis.lancopy.refactor2.tunnel.TunnelManager;
 import com.erhannis.mathnstuff.FactoryHashMap;
 import com.erhannis.mathnstuff.Pair;
@@ -85,6 +88,10 @@ public class LanCopyNet {
         AltingChannelInput<OutgoingTransferState> txOtsIn = txOtsChannel.in();
         ChannelOutput<OutgoingTransferState> txOtsOut = JcspUtils.logDeadlock(txOtsChannel.out()); //NEXT
 
+        Any2OneChannel<LocalMessage> localMessageChannel = Channel.<LocalMessage> any2one(new InfiniteBuffer<>());
+        AltingChannelInput<LocalMessage> localMessageIn = localMessageChannel.in();
+        ChannelOutput<LocalMessage> localMessageOut = JcspUtils.logDeadlock(localMessageChannel.out());
+
         Any2OneChannel<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageChannel = Channel.<Pair<NodeManager.CRToken, Object>> any2one(new InfiniteBuffer<>());
         AltingChannelInput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageIn = rxUnhandledMessageChannel.in(); //NEXT
         ChannelOutput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageOut = JcspUtils.logDeadlock(rxUnhandledMessageChannel.out()); //NEXT
@@ -117,8 +124,8 @@ public class LanCopyNet {
 
                 //NEXT //DUMMY Move to separate class probably
                 //NEXT //DUMMY Shutdown?
+                //RAINY This whole subsystem has become a little stupid
                 
-                Alternative alt = new Alternative(new Guard[]{rxUnhandledMessageIn});
                 /*
                 FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>
                    new Factory<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>
@@ -144,40 +151,69 @@ public class LanCopyNet {
                                                  @Override public ArrayList<Pair<ChannelOutput<Object>, MessageHandler>> construct(NodeManager.CRToken input) {
                                                                   ArrayList<Pair<ChannelOutput<Object>, MessageHandler>> mhs = new ArrayList<>();
                 */
-                              FactoryHashMap<NodeManager.CRToken, ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>> perNodeMessageHandlers
-                        = new FactoryHashMap<NodeManager.CRToken, ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>(
-                                 new Factory<NodeManager.CRToken, ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>() {
-                                                 @Override public ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> construct(NodeManager.CRToken input) {
-                                                                  ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> mhs = new ArrayList<>();
+                              FactoryHashMap<UUID, ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>> perNodeMessageHandlers
+                        = new FactoryHashMap<UUID, ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>>(
+                                 new Factory<UUID, ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>>() {
+                                  @Override public ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>> construct(UUID nodeId) {
+                                                   ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>> mhs = new ArrayList<>();
                         boolean tunnelsEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tunnels.enabled", true); //THINK Maybe default to false
                         if (tunnelsEnabled) {
+                            AltingFunctionChannel<LocalMessage, Boolean> localHandlerCall = new AltingFunctionChannel<>(true);
                             AltingFunctionChannel<Pair<NodeManager.CRToken,Object>, Boolean> handlerCall = new AltingFunctionChannel<>(true);
-                            new ProcessManager(new TunnelManager(input.nodeId, handlerCall.getServer(), txOtsOut, confirmationCall.getClient())).start();
-                            mhs.add(handlerCall.getClient());
+                            new ProcessManager(new TunnelManager(nodeId, localHandlerCall.getServer(), handlerCall.getServer(), txOtsOut, confirmationCall.getClient())).start();
+                            mhs.add(Pair.gen(localHandlerCall.getClient(), handlerCall.getClient()));
                         }
                         //PERIODIC Extra message handlers go here, or in globalMessageHandlers
                         return mhs;
                     }
                 });
-                ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> globalMessageHandlers = new ArrayList<>();
+                ArrayList<Pair<FCClient<Object,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>> globalMessageHandlers = new ArrayList<>();
                 
+                Alternative alt = new Alternative(new Guard[]{localMessageIn, rxUnhandledMessageIn});
                 while (true) {
                     switch (alt.priSelect()) {
-                        case 0: { // rxUnhandledMessageIn
-                            Pair<NodeManager.CRToken, Object> dmsg = rxUnhandledMessageIn.read();
+                        case 0: { // localMessageIn
+                            LocalMessage msg = localMessageIn.read();
                             handleMessage: {
-                                for (FCClient<Pair<NodeManager.CRToken,Object>, Boolean> handler : perNodeMessageHandlers.get(dmsg.a)) {
+                                if (msg instanceof NodeKeyedLocalMessage) {
+                                    for (Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> handlers : perNodeMessageHandlers.get(((NodeKeyedLocalMessage) msg).routing)) {
+                                        try {
+                                            if (handlers.a.call(msg)) {
+                                                break handleMessage;
+                                            }
+                                        } catch (Throwable t) {
+                                            t.printStackTrace();
+                                        }
+                                    }
+                                }
+                                for (Pair<FCClient<Object,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> handlers : globalMessageHandlers) {
                                     try {
-                                        if (handler.call(dmsg)) {
+                                        if (handlers.a.call(msg)) {
                                             break handleMessage;
                                         }
                                     } catch (Throwable t) {
                                         t.printStackTrace();
                                     }
                                 }
-                                for (FCClient<Pair<NodeManager.CRToken,Object>, Boolean> handler : globalMessageHandlers) {
+                                System.err.println("ERR Got unhandled msg: " + msg);
+                            }
+                            break;
+                        }
+                        case 1: { // rxUnhandledMessageIn
+                            Pair<NodeManager.CRToken, Object> dmsg = rxUnhandledMessageIn.read();
+                            handleMessage: {
+                                for (Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> handlers : perNodeMessageHandlers.get(dmsg.a.nodeId)) {
                                     try {
-                                        if (handler.call(dmsg)) {
+                                        if (handlers.b.call(dmsg)) {
+                                            break handleMessage;
+                                        }
+                                    } catch (Throwable t) {
+                                        t.printStackTrace();
+                                    }
+                                }
+                                for (Pair<FCClient<Object,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> handlers : globalMessageHandlers) {
+                                    try {
+                                        if (handlers.b.call(dmsg)) {
                                             break handleMessage;
                                         }
                                     } catch (Throwable t) {
@@ -192,7 +228,7 @@ public class LanCopyNet {
                 }
             }
         })).start();
-        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, enrollCommChannelOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
+        return new UiInterface(dataOwner, adUpdatedSplitter.register(new InfiniteBuffer<>()), summaryUpdatedSplitter.register(new InfiniteBuffer<>()), commStatusIn, newDataOut, subscribeOut, enrollCommChannelOut, localMessageOut, dataCall.getClient(), rosterCall.getClient(), adCall.getClient(), confirmationCall.getServer());
     }
 
     public static class UiInterface {
@@ -203,12 +239,13 @@ public class LanCopyNet {
         public final ChannelOutput<Data> newDataOut;
         public final ChannelOutput<List<Comm>> subscribeOut;
         public final ChannelOutput<CommChannel> enrollCommChannelOut;
+        public final ChannelOutput<LocalMessage> localMessageOut;
         public final FCClient<UUID, Pair<String, InputStream>> dataCall;
         public final FCClient<Void, List<Advertisement>> rosterCall;
         public final FCClient<UUID, Advertisement> adCall;
         public final AltingFCServer<String, Boolean> confirmationServer;
         
-        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<CommChannel> enrollCommChannelOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall, AltingFCServer<String, Boolean> confirmationServer) {
+        public UiInterface(DataOwner dataOwner, AltingChannelInput<Advertisement> adIn, AltingChannelInput<Summary> summaryIn, AltingChannelInput<Pair<Comm, Boolean>> commStatusIn, ChannelOutput<Data> newDataOut, ChannelOutput<List<Comm>> subscribeOut, ChannelOutput<CommChannel> enrollCommChannelOut, ChannelOutput<LocalMessage> localMessageOut, FCClient<UUID, Pair<String, InputStream>> dataCall, FCClient<Void, List<Advertisement>> rosterCall, FCClient<UUID, Advertisement> adCall, AltingFCServer<String, Boolean> confirmationServer) {
             this.dataOwner = dataOwner;
             this.adIn = adIn;
             this.summaryIn = summaryIn;
@@ -216,6 +253,7 @@ public class LanCopyNet {
             this.newDataOut = newDataOut;
             this.subscribeOut = subscribeOut;
             this.enrollCommChannelOut = enrollCommChannelOut;
+            this.localMessageOut = localMessageOut;
             this.dataCall = dataCall;
             this.rosterCall = rosterCall;
             this.adCall = adCall;

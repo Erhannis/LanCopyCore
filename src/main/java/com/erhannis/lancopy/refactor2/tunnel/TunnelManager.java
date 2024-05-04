@@ -8,6 +8,7 @@ import com.erhannis.lancopy.refactor2.NodeManager;
 import com.erhannis.lancopy.refactor2.NodeManager.CRToken;
 import com.erhannis.lancopy.refactor2.OTSSingle;
 import com.erhannis.lancopy.refactor2.OutgoingTransferState;
+import com.erhannis.lancopy.refactor2.messages.local.LocalMessage;
 import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelConnectionDataMessage;
 import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelConnectionErrorMessage;
 import com.erhannis.lancopy.refactor2.messages.tunnel.TunnelConnectionRequestMessage;
@@ -263,6 +264,7 @@ public class TunnelManager implements CSProcess {
     private final AltingChannelInput<Pair<UUID, byte[]>> internalRxDataIn; // (connection, data) put on loop //NEXT Send connection request on first message, I guess
     private final ChannelOutput<Pair<UUID, byte[]>> internalRxDataOut; // (connection, data) give to endpoints
     
+    public AltingFCServer<LocalMessage,Boolean> localHandlerServer;
     public AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer;
     public ChannelOutput<OutgoingTransferState> txOtsOut;
     public FCClient<String, Boolean> confirmationClient;
@@ -290,8 +292,9 @@ public class TunnelManager implements CSProcess {
         return null;
     }
     
-    public TunnelManager(UUID nodeId, AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer, ChannelOutput<OutgoingTransferState> txOtsOut, FCClient<String, Boolean> confirmationClient) {
+    public TunnelManager(UUID nodeId, AltingFCServer<LocalMessage,Boolean> localHandlerServer, AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer, ChannelOutput<OutgoingTransferState> txOtsOut, FCClient<String, Boolean> confirmationClient) {
         this.nodeId = nodeId;
+        this.localHandlerServer = localHandlerServer;
         this.handlerServer = handlerServer;
         this.txOtsOut = txOtsOut;
         this.confirmationClient = confirmationClient;
@@ -454,14 +457,40 @@ public class TunnelManager implements CSProcess {
             return false;
         }
     }
+    
+    private boolean handleLocalMessage(Object msg) {
+        if (msg instanceof TunnelRequestMessage) {
+            TunnelRequestMessage m = (TunnelRequestMessage)msg;
+            initiateTunnelRequest(m);
+            return true;
+        } else {
+            return false;
+        }
+    }
+    
+    private void initiateTunnelRequest(TunnelRequestMessage r) {
+        pendingTunnels.put(nodeId, r);
+        txOtsOut.write(new OTSSingle(UUID.randomUUID(), nodeId, r));
+    }
 
     @Override
     public void run() {
-        Alternative alt = new Alternative(new Guard[]{handlerServer, internalRxDataIn});
+        Alternative alt = new Alternative(new Guard[]{localHandlerServer, handlerServer, internalRxDataIn});
         while (true) {
             try {
                 switch (alt.priSelect()) {
-                    case 0: { // messageIn
+                    case 0: { // localHandlerServer
+                        Object msg = localHandlerServer.startRead();
+                        boolean result = false;
+                        try {
+                            result = handleLocalMessage(msg);
+                        } finally {
+                            localHandlerServer.endRead(result);
+                        }
+                        //DUMMY Handle shutdown?
+                        break;
+                    }
+                    case 1: { // handlerServer
                         Pair<CRToken, Object> msg = handlerServer.startRead();
                         boolean result = false;
                         try {
@@ -469,10 +498,9 @@ public class TunnelManager implements CSProcess {
                         } finally {
                             handlerServer.endRead(result);
                         }
-                        //DUMMY Handle shutdown?
                         break;
                     }
-                    case 1: { // internalRxDataIn
+                    case 2: { // internalRxDataIn
                         // connection, data
                         Pair<UUID, byte[]> msg = internalRxDataIn.read();
                         // Pass back out
