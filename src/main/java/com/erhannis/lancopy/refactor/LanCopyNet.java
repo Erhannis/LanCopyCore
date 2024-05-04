@@ -10,7 +10,6 @@ import com.erhannis.lancopy.data.Data;
 import com.erhannis.lancopy.data.TextData;
 import com.erhannis.lancopy.refactor2.CommChannel;
 import com.erhannis.lancopy.refactor2.CommsManager;
-import com.erhannis.lancopy.refactor2.MessageHandler;
 import com.erhannis.lancopy.refactor2.NodeManager;
 import com.erhannis.lancopy.refactor2.OutgoingTransferState;
 import com.erhannis.lancopy.refactor2.tunnel.TunnelManager;
@@ -120,37 +119,65 @@ public class LanCopyNet {
                 //NEXT //DUMMY Shutdown?
                 
                 Alternative alt = new Alternative(new Guard[]{rxUnhandledMessageIn});
-                FactoryHashMap<UUID, ArrayList<MessageHandler>> perNodeMessageHandlers = new FactoryHashMap<>(new Factory<UUID, ArrayList<MessageHandler>>() {
-                    @Override
-                    public ArrayList<MessageHandler> construct(UUID input) {
-                        ArrayList<MessageHandler> mhs = new ArrayList<>();
+                /*
+                FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>
+                   new Factory<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>
+                                     ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>
+
+                FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>> perNodeMessageHandlers
+                        = new FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>(
+                                 new Factory<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>() {
+
+                FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>> perNodeMessageHandlers
+                        = new FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<>, MessageHandler>>>(
+                                 new Factory<UUID, ArrayList<Pair<AltingChannelInput<>, MessageHandler>>>() {
+
+                              FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>> perNodeMessageHandlers
+                        = new FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>(
+                                 new Factory<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>() {
+                                                 @Override public ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>> construct(NodeManager.CRToken input) {
+                                                                  ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>> mhs = new ArrayList<>();
+
+                              FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Object>, MessageHandler>>> perNodeMessageHandlers
+                        = new FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Object>, MessageHandler>>>(
+                                 new Factory<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Object>, MessageHandler>>>() {
+                                                 @Override public ArrayList<Pair<ChannelOutput<Object>, MessageHandler>> construct(NodeManager.CRToken input) {
+                                                                  ArrayList<Pair<ChannelOutput<Object>, MessageHandler>> mhs = new ArrayList<>();
+                */
+                              FactoryHashMap<NodeManager.CRToken, ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>> perNodeMessageHandlers
+                        = new FactoryHashMap<NodeManager.CRToken, ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>(
+                                 new Factory<NodeManager.CRToken, ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>() {
+                                                 @Override public ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> construct(NodeManager.CRToken input) {
+                                                                  ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> mhs = new ArrayList<>();
                         boolean tunnelsEnabled = (Boolean) dataOwner.options.getOrDefault("Comms.tunnels.enabled", true); //THINK Maybe default to false
                         if (tunnelsEnabled) {
-                            mhs.add(new TunnelManager(input, txOtsOut, confirmationCall.getClient()));
+                            AltingFunctionChannel<Pair<NodeManager.CRToken,Object>, Boolean> handlerCall = new AltingFunctionChannel<>(true);
+                            new ProcessManager(new TunnelManager(input.nodeId, handlerCall.getServer(), txOtsOut, confirmationCall.getClient())).start();
+                            mhs.add(handlerCall.getClient());
                         }
                         //PERIODIC Extra message handlers go here, or in globalMessageHandlers
                         return mhs;
                     }
                 });
-                ArrayList<MessageHandler> globalMessageHandlers = new ArrayList<>();
+                ArrayList<FCClient<Pair<NodeManager.CRToken,Object>, Boolean>> globalMessageHandlers = new ArrayList<>();
                 
                 while (true) {
                     switch (alt.priSelect()) {
                         case 0: { // rxUnhandledMessageIn
                             Pair<NodeManager.CRToken, Object> dmsg = rxUnhandledMessageIn.read();
                             handleMessage: {
-                                for (MessageHandler handler : perNodeMessageHandlers.get(dmsg.a.nodeId)) {
+                                for (FCClient<Pair<NodeManager.CRToken,Object>, Boolean> handler : perNodeMessageHandlers.get(dmsg.a)) {
                                     try {
-                                        if (handler.handleMessage(dmsg)) {
+                                        if (handler.call(dmsg)) {
                                             break handleMessage;
                                         }
                                     } catch (Throwable t) {
                                         t.printStackTrace();
                                     }
                                 }
-                                for (MessageHandler handler : globalMessageHandlers) {
+                                for (FCClient<Pair<NodeManager.CRToken,Object>, Boolean> handler : globalMessageHandlers) {
                                     try {
-                                        if (handler.handleMessage(dmsg)) {
+                                        if (handler.call(dmsg)) {
                                             break handleMessage;
                                         }
                                     } catch (Throwable t) {

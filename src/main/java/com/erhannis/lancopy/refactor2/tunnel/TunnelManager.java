@@ -4,7 +4,6 @@
  */
 package com.erhannis.lancopy.refactor2.tunnel;
 
-import com.erhannis.lancopy.refactor2.MessageHandler;
 import com.erhannis.lancopy.refactor2.NodeManager;
 import com.erhannis.lancopy.refactor2.NodeManager.CRToken;
 import com.erhannis.lancopy.refactor2.OTSSingle;
@@ -264,7 +263,7 @@ public class TunnelManager implements CSProcess {
     private final AltingChannelInput<Pair<UUID, byte[]>> internalRxDataIn; // (connection, data) put on loop //NEXT Send connection request on first message, I guess
     private final ChannelOutput<Pair<UUID, byte[]>> internalRxDataOut; // (connection, data) give to endpoints
     
-    public AltingChannelInput<Pair<NodeManager.CRToken, Object>> messageIn;
+    public AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer;
     public ChannelOutput<OutgoingTransferState> txOtsOut;
     public FCClient<String, Boolean> confirmationClient;
 
@@ -291,9 +290,9 @@ public class TunnelManager implements CSProcess {
         return null;
     }
     
-    public TunnelManager(UUID nodeId, AltingChannelInput<Pair<NodeManager.CRToken, Object>> messageIn, ChannelOutput<OutgoingTransferState> txOtsOut, FCClient<String, Boolean> confirmationClient) {
+    public TunnelManager(UUID nodeId, AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer, ChannelOutput<OutgoingTransferState> txOtsOut, FCClient<String, Boolean> confirmationClient) {
         this.nodeId = nodeId;
-        this.messageIn = messageIn;
+        this.handlerServer = handlerServer;
         this.txOtsOut = txOtsOut;
         this.confirmationClient = confirmationClient;
 
@@ -458,13 +457,18 @@ public class TunnelManager implements CSProcess {
 
     @Override
     public void run() {
-        Alternative alt = new Alternative(new Guard[]{messageIn, internalRxDataIn});
+        Alternative alt = new Alternative(new Guard[]{handlerServer, internalRxDataIn});
         while (true) {
             try {
                 switch (alt.priSelect()) {
                     case 0: { // messageIn
-                        Pair<CRToken, Object> msg = messageIn.read();
-                        handleMessage(msg);
+                        Pair<CRToken, Object> msg = handlerServer.startRead();
+                        boolean result = false;
+                        try {
+                            result = handleMessage(msg);
+                        } finally {
+                            handlerServer.endRead(result);
+                        }
                         //DUMMY Handle shutdown?
                         break;
                     }
