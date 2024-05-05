@@ -49,7 +49,8 @@ import jcsp.util.InfiniteBuffer;
 import jcsp.util.ints.InfiniteBufferInt;
 
 /**
- * This represents a Node, in the view of the CommsManager.
+ * This represents a Node, in the view of the CommsManager.  Manages communications with it.
+ * 
  * @author erhannis
  */
 public class NodeManager implements CSProcess {
@@ -304,7 +305,7 @@ public class NodeManager implements CSProcess {
                                         // Note, I'm defying convention and skipping the intermediation, because this case can block waiting for the connection to go through, defeating the purpose of this notification
                                         cc = new TlsWrapper(dataOwner, ClientServerMode.HAGGLE, true, cc, showLocalFingerprintOut);
                                     }
-                                    ChannelReader cr = new ChannelReader(cc, nodeId); //NEXT //DUMMY //DITTO
+                                    ChannelReader cr = new ChannelReader(cc, nodeId);
                                     new ProcessManager(cr).start();
                                     System.out.println("NM created CR: " + cr.token);
 

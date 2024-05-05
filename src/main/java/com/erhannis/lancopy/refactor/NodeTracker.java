@@ -33,7 +33,8 @@ import jcsp.lang.PoisonException;
 import jcsp.lang.ProcessManager;
 
 /**
- *
+ * Keeps track of the state of nodes.
+ * 
  * @author erhannis
  */
 public class NodeTracker implements CSProcess {

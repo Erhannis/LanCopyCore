@@ -18,7 +18,7 @@ public class TunnelRequestMessage {
     
     public static enum TunnelProtocol {
         TCP,
-        UDP;
+        UDP; //RAINY Implement
     }
     
     public final UUID initiatorTunnelId;

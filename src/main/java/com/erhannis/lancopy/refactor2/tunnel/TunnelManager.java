@@ -45,6 +45,11 @@ import jcsp.lang.ProcessManager;
 import jcsp.util.InfiniteBuffer;
 
 /*
+//WARNING: The tunnel system is particularly unstable.  In particular, I don't expect
+it to deal well with errors or streams closing, on purpose or on accident.
+It may leave connections on one side open, etc.  Your best bet is to close the
+program and reopen it.
+
 Between two nodes, there can exist zero or more tunnels.
 Each tunnel has two endpoints: one listener, and one talker.
 For a tunnel T, between nodes X and Y, X has one endpoint and Y has the other.
@@ -127,7 +132,7 @@ public class TunnelManager implements CSProcess {
         }        
     }
     
-    //DUMMY I'm really not sure these shut down properly, or at all
+    //RAINY Implement shutdown
     public static abstract class Endpoint implements CSProcess {
         public final DataOwner dataOwner;
         public final UUID thisId;
@@ -196,7 +201,7 @@ public class TunnelManager implements CSProcess {
             } catch (Exception e) {
                 e.printStackTrace();
             }
-            rxDataOut.write(new E2MErrorMessage(thisId, conId)); //DUMMY Handle
+            rxDataOut.write(new E2MErrorMessage(thisId, conId));
         }
 
         AltingFunctionChannel<UUID, AltingChannelInput<byte[]>> getTxDataInChannelCall = new AltingFunctionChannel<>(true);
@@ -209,39 +214,43 @@ public class TunnelManager implements CSProcess {
                 AltingFCServer<UUID, AltingChannelInput<byte[]>> getTxDataInChannelServer = getTxDataInChannelCall.getServer();
                 Alternative alt = new Alternative(new Guard[]{getTxDataInChannelServer, txDataIn});
                 while (true) {
-                    switch (alt.priSelect()) {
-                        case 0: { // getTxDataInChannelServer
-                            UUID id = getTxDataInChannelServer.startRead();
-                            try {
-                                if (internalTxChannels.containsKey(id)) {
-                                    System.err.println("ERR Request for new internal channel with ID that already exists: "+id+ " (on "+thisId+")");
+                    try {
+                        switch (alt.priSelect()) {
+                            case 0: { // getTxDataInChannelServer
+                                UUID id = getTxDataInChannelServer.startRead();
+                                try {
+                                    if (internalTxChannels.containsKey(id)) {
+                                        System.err.println("ERR Request for new internal channel with ID that already exists: "+id+ " (on "+thisId+")");
+                                        getTxDataInChannelServer.endRead(null);
+                                        break;
+                                    }
+                                    Any2OneChannel<byte[]> internalTxDataChannel = Channel.<byte[]> any2one(new InfiniteBuffer<>());
+                                    AltingChannelInput<byte[]> internalTxDataIn = internalTxDataChannel.in();
+                                    ChannelOutput<byte[]> internalTxDataOut = JcspUtils.logDeadlock(internalTxDataChannel.out());
+                                    internalTxChannels.put(id, internalTxDataOut);
+                                    getTxDataInChannelServer.endRead(internalTxDataIn);
+                                } catch (Throwable t) {
                                     getTxDataInChannelServer.endRead(null);
-                                    break;
+                                    throw t;
                                 }
-                                Any2OneChannel<byte[]> internalTxDataChannel = Channel.<byte[]> any2one(new InfiniteBuffer<>());
-                                AltingChannelInput<byte[]> internalTxDataIn = internalTxDataChannel.in();
-                                ChannelOutput<byte[]> internalTxDataOut = JcspUtils.logDeadlock(internalTxDataChannel.out());
-                                internalTxChannels.put(id, internalTxDataOut);
-                                getTxDataInChannelServer.endRead(internalTxDataIn);
-                            } catch (Throwable t) {
-                                getTxDataInChannelServer.endRead(null);
-                                throw t;
+                                break;
                             }
-                            break;
-                        }
-                        case 1: { // txDataIn
-                            Pair<UUID, byte[]> rq = txDataIn.read();
-                            ChannelOutput<byte[]> internalTxDataOut = internalTxChannels.get(rq.a);
-                            if (internalTxDataOut != null) {
-                                internalTxDataOut.write(rq.b);
-                            } else {
-                                System.err.println("ERR Attempt to send on nonexistent connection: "+rq.a+ " (on "+thisId+")");
-                                //CHECK Should I return error somehow??
+                            case 1: { // txDataIn
+                                Pair<UUID, byte[]> rq = txDataIn.read();
+                                ChannelOutput<byte[]> internalTxDataOut = internalTxChannels.get(rq.a);
+                                if (internalTxDataOut != null) {
+                                    internalTxDataOut.write(rq.b);
+                                } else {
+                                    System.err.println("ERR Attempt to send on nonexistent connection: "+rq.a+ " (on "+thisId+")");
+                                    //CHECK Should I return error somehow??
+                                }
+                                break;
                             }
-                            break;
                         }
+                    } catch (Throwable t) {
+                        System.err.println("TM.EP controller got error; continuing " + this.thisId);
+                        t.printStackTrace();
                     }
-                    //DUMMY Error handling
                 }
             }).start();
         }
@@ -467,15 +476,15 @@ public class TunnelManager implements CSProcess {
         } else if (m0 instanceof TunnelErrorMessage) {
             TunnelErrorMessage m = (TunnelErrorMessage)m0;
             System.err.println("Tunnel error: "+m); //THINK Maybe not syserr
-            //DUMMY //THINK
             pendingTunnels.remove(((TunnelErrorMessage) m0).tunnelId);
             UUID l = endpointToLocal.get(((TunnelErrorMessage) m0).tunnelId);
             UUID r = endpointToRemote(((TunnelErrorMessage) m0).tunnelId);
             Endpoint ep = localEndpoints.remove(l);
             endpointToLocal.remove(l);
             endpointToLocal.remove(r);
-            //ep.close(); //NEXT close
-            //NEXT Remove all connections from connectionsToEndpoints
+            //ep.close(); //RAINY close
+            //cleanUpConnection();
+            //RAINY Remove all connections from connectionsToEndpoints, and other cleanup
             return true;
         } else if (m0 instanceof TunnelConnectionRequestMessage) {
             TunnelConnectionRequestMessage m = (TunnelConnectionRequestMessage)m0;
@@ -508,8 +517,7 @@ public class TunnelManager implements CSProcess {
         } else if (m0 instanceof TunnelConnectionSuccessMessage) {
             TunnelConnectionSuccessMessage m = (TunnelConnectionSuccessMessage)m0;
             //THINK Should this even be a thing?  Or should a connection be assumed until proven otherwise?
-            //NEXT //DUMMY Make connection or st
-            //asdf;
+            //        Is there anything that actually needs done here?
             return true;
         } else if (m0 instanceof TunnelConnectionErrorMessage) {
             TunnelConnectionErrorMessage m = (TunnelConnectionErrorMessage)m0;
@@ -523,10 +531,10 @@ public class TunnelManager implements CSProcess {
                 //THINK Maybe check index or something?
                 internalTxDataOuts.get(epid).write(Pair.gen(m.connectionId, m.data));
             } catch (Exception e) {
-                //NEXT Send error or something, close channels
+                //RAINY Send error or something, close channels
                 throw e;
             }
-            //asdf;
+            //THINK Anything else, here?
             return true;
         } else {
             // Unhandled
@@ -535,7 +543,7 @@ public class TunnelManager implements CSProcess {
     }
     
     private void cleanUpConnection(UUID connectionId) {
-        //NEXT
+        //RAINY Should probably do something, here.
     }
     
     private boolean handleLocalMessage(Object msg) {
@@ -573,7 +581,7 @@ public class TunnelManager implements CSProcess {
                         } finally {
                             localHandlerServer.endRead(result);
                         }
-                        //DUMMY Handle shutdown?
+                        //RAINY Handle shutdown?
                         break;
                     }
                     case 1: { // handlerServer
@@ -595,13 +603,12 @@ public class TunnelManager implements CSProcess {
                         } else if (msg0 instanceof E2MDataMessage) {
                             E2MDataMessage msg = (E2MDataMessage) msg0;
                             //RAINY index
-                            //NEXT Somehow these are being sent out of order.  How on earth how?
                             txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionDataMessage(idx++, msg.data, msg.connectionId)));
                         } else if (msg0 instanceof E2MErrorMessage) {
                             E2MErrorMessage msg = (E2MErrorMessage) msg0;
                             if (msg.connectionId == null) {
                                 System.err.println("Got general endpoint error: "+msg);
-                                //DUMMY What to do here?  Clean things up?  Restart?
+                                //RAINY //THINK What to do here?  Clean things up?  Restart?
                             } else {
                                 txOtsOut.write(new OTSSingle(UUID.randomUUID(), this.nodeId, new TunnelConnectionErrorMessage(msg.connectionId, "Connection error (closed?)")));
                                 cleanUpConnection(msg.connectionId);
@@ -615,6 +622,7 @@ public class TunnelManager implements CSProcess {
             } catch (Throwable t) {
                 System.err.println("TunnelManager got error; continuing");
                 t.printStackTrace();
+                //RAINY Use and deal with poison?
             }
         }
     }

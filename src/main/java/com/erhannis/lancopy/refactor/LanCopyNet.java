@@ -122,35 +122,11 @@ public class LanCopyNet {
             () -> { // Extra message handlers
                 // Like, as in, message objects that come in from other nodes and don't match anything in the CommsManager's gauntlet
 
-                //NEXT //DUMMY Move to separate class probably
-                //NEXT //DUMMY Shutdown?
+                //RAINY Move to separate class probably
+                //RAINY Shutdown?
                 //RAINY This whole subsystem has become a little stupid
                 
-                /*
-                FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>
-                   new Factory<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>
-                                     ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>
-
-                FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>> perNodeMessageHandlers
-                        = new FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>(
-                                 new Factory<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>() {
-
-                FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>> perNodeMessageHandlers
-                        = new FactoryHashMap<UUID, ArrayList<Pair<AltingChannelInput<>, MessageHandler>>>(
-                                 new Factory<UUID, ArrayList<Pair<AltingChannelInput<>, MessageHandler>>>() {
-
-                              FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>> perNodeMessageHandlers
-                        = new FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>(
-                                 new Factory<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>>>() {
-                                                 @Override public ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>> construct(NodeManager.CRToken input) {
-                                                                  ArrayList<Pair<ChannelOutput<Pair<NodeManager.CRToken,Object>>, MessageHandler>> mhs = new ArrayList<>();
-
-                              FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Object>, MessageHandler>>> perNodeMessageHandlers
-                        = new FactoryHashMap<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Object>, MessageHandler>>>(
-                                 new Factory<NodeManager.CRToken, ArrayList<Pair<ChannelOutput<Object>, MessageHandler>>>() {
-                                                 @Override public ArrayList<Pair<ChannelOutput<Object>, MessageHandler>> construct(NodeManager.CRToken input) {
-                                                                  ArrayList<Pair<ChannelOutput<Object>, MessageHandler>> mhs = new ArrayList<>();
-                */
+                // This is indented weird to line up the parameters
                               FactoryHashMap<UUID, ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>> perNodeMessageHandlers
                         = new FactoryHashMap<UUID, ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>>(
                                  new Factory<UUID, ArrayList<Pair<FCClient<LocalMessage,Boolean>, FCClient<Pair<NodeManager.CRToken,Object>, Boolean>>>>() {
