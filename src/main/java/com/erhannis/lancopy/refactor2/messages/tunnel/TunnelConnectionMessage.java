@@ -11,7 +11,8 @@ import java.util.UUID;
  * @author erhannis
  */
 public abstract class TunnelConnectionMessage {
-    public final UUID connectionId; //NEXT I think this may need to go away
+    //RAINY I think this may need to go away; it's at the center of a failure of a node to open a tunnel to itself (a conceptually reasonable thing)
+    public final UUID connectionId;
 
     public TunnelConnectionMessage(UUID connectionId) {
         this.connectionId = connectionId;
