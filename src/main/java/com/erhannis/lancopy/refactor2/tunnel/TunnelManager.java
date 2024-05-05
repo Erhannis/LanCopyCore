@@ -328,7 +328,7 @@ public class TunnelManager implements CSProcess {
         
     // private final AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn; // ...give to endpoints?
     private final HashMap<UUID, ChannelOutput<Pair<UUID, byte[]>>> internalTxDataOuts = new HashMap<>(); // EndpointId -> channel(connection, data). In loop, send data to an endpoint
-    private final AltingChannelInput<Endpoint2ManagerMessage> internalRxDataIn; // (connection, data) put on loop //NEXT Send connection request on first message, I guess
+    private final AltingChannelInput<Endpoint2ManagerMessage> internalRxDataIn; // (connection, data) put on loop
     private final ChannelOutput<Endpoint2ManagerMessage> internalRxDataOut; // (connection, data) give to endpoints
     
     public AltingFCServer<LocalMessage,Boolean> localHandlerServer;
@@ -337,7 +337,7 @@ public class TunnelManager implements CSProcess {
     public FCClient<String, Boolean> confirmationClient;
 
     public HashMap<UUID, TunnelRequestMessage> pendingTunnels = new HashMap<>();
-    public HashMap<UUID, UUID> endpointToLocal = new HashMap<>(); // any endpoint id -> associated local endpoint id //NEXT Normalize all endpoint uses
+    public HashMap<UUID, UUID> endpointToLocal = new HashMap<>(); // any endpoint id -> associated local endpoint id //CHECK Normalize all endpoint uses
     public HashMap<UUID, Endpoint> localEndpoints = new HashMap<>();
     public HashMap<UUID, Endpoint> connectionsToEndpoints = new HashMap<>();
 
@@ -463,7 +463,7 @@ public class TunnelManager implements CSProcess {
                     }
                 }
                 new ProcessManager(ep).start();
-                //NEXT Whatever we add here, also add in the TunnelRequestMessage handler, above
+                //NOTE Whatever we add here, also add in the TunnelRequestMessage handler, above
                 // Map both IDs to our initial endpoint id
                 endpointToLocal.put(m.responseTunnelId, r.initiatorTunnelId);
                 endpointToLocal.put(r.initiatorTunnelId, r.initiatorTunnelId);

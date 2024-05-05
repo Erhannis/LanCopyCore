@@ -669,7 +669,7 @@ public class CommsManager implements CSProcess {
                         break;
                     }
                     case 12: { // transferTimer
-                        //NEXT Add other (e.g. tunnel) requests to set?
+                        //THINK Add other (e.g. tunnel) requests to set, not just cram them into the OutgoingTransferState model?
                         boolean somethingSent = false;                        
                         boolean transfersExist = false;
                         for (Entry<UUID,LinkedHashMap<UUID,OutgoingTransferState>> oneNodesTransfers : outgoingTransfers.entrySet()) {

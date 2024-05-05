@@ -86,15 +86,15 @@ public class LanCopyNet {
 
         Any2OneChannel<OutgoingTransferState> txOtsChannel = Channel.<OutgoingTransferState> any2one(new InfiniteBuffer<>());
         AltingChannelInput<OutgoingTransferState> txOtsIn = txOtsChannel.in();
-        ChannelOutput<OutgoingTransferState> txOtsOut = JcspUtils.logDeadlock(txOtsChannel.out()); //NEXT
+        ChannelOutput<OutgoingTransferState> txOtsOut = JcspUtils.logDeadlock(txOtsChannel.out());
 
         Any2OneChannel<LocalMessage> localMessageChannel = Channel.<LocalMessage> any2one(new InfiniteBuffer<>());
         AltingChannelInput<LocalMessage> localMessageIn = localMessageChannel.in();
         ChannelOutput<LocalMessage> localMessageOut = JcspUtils.logDeadlock(localMessageChannel.out());
 
         Any2OneChannel<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageChannel = Channel.<Pair<NodeManager.CRToken, Object>> any2one(new InfiniteBuffer<>());
-        AltingChannelInput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageIn = rxUnhandledMessageChannel.in(); //NEXT
-        ChannelOutput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageOut = JcspUtils.logDeadlock(rxUnhandledMessageChannel.out()); //NEXT
+        AltingChannelInput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageIn = rxUnhandledMessageChannel.in();
+        ChannelOutput<Pair<NodeManager.CRToken, Object>> rxUnhandledMessageOut = JcspUtils.logDeadlock(rxUnhandledMessageChannel.out());
         
         
         SynchronousSplitter<Advertisement> adUpdatedSplitter = new SynchronousSplitter<>();
