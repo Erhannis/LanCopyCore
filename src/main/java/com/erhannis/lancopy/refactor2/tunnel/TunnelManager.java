@@ -4,6 +4,7 @@
  */
 package com.erhannis.lancopy.refactor2.tunnel;
 
+import com.erhannis.lancopy.DataOwner;
 import com.erhannis.lancopy.refactor2.NodeManager;
 import com.erhannis.lancopy.refactor2.NodeManager.CRToken;
 import com.erhannis.lancopy.refactor2.OTSSingle;
@@ -128,12 +129,14 @@ public class TunnelManager implements CSProcess {
     
     //DUMMY I'm really not sure these shut down properly, or at all
     public static abstract class Endpoint implements CSProcess {
+        public final DataOwner dataOwner;
         public final UUID thisId;
         public final UUID pairId;
         public final ChannelOutput<Endpoint2ManagerMessage> rxDataOut; // Connection id, data
         public final AltingChannelInput<Pair<UUID, byte[]>> txDataIn; // Connection id, data
 
-        public Endpoint(UUID thisId, UUID pairId, ChannelOutput<Endpoint2ManagerMessage> rxDataOut, AltingChannelInput<Pair<UUID, byte[]>> txDataIn) {
+        public Endpoint(DataOwner dataOwner, UUID thisId, UUID pairId, ChannelOutput<Endpoint2ManagerMessage> rxDataOut, AltingChannelInput<Pair<UUID, byte[]>> txDataIn) {
+            this.dataOwner = dataOwner;
             this.thisId = thisId;
             this.pairId = pairId;
             this.rxDataOut = rxDataOut;
@@ -149,7 +152,7 @@ public class TunnelManager implements CSProcess {
 
                         while (true) {
                             byte[] data = internalTxDataIn.read();
-                            System.out.println("TM.EP "+thisId+"_"+conId+" write: "+new String(data, "US-ASCII"));
+                            //System.out.println("TM.EP "+thisId+"_"+conId+" write: "+new String(data, "US-ASCII"));
                             out.write(data);
                             out.flush();
                         }
@@ -159,18 +162,20 @@ public class TunnelManager implements CSProcess {
                     }
                     System.out.println("TM.EP "+thisId+"_"+conId+" talker ended");
                 });
+
+                int bufferSize = (int) dataOwner.options.getOrDefault("Comms.tunnels.chunk_size", 1024*16);
                 
                 ProcessManager listener = new ProcessManager(() -> {
                     //rxDataOut.write(Pair.gen(conId, new byte[0])); //THINK
                     try (InputStream in = clientSocket.getInputStream()) {
 
-                       byte[] buffer = new byte[256];
+                       byte[] buffer = new byte[bufferSize];
                        int bytesRead;
                        while ((bytesRead = in.read(buffer)) != -1) {
                             //System.out.println(prefix+new String(buffer, 0, bytesRead, Charset.forName("ISO-8859-1")));
                             byte[] bout = new byte[bytesRead];
                             System.arraycopy(buffer, 0, bout, 0, bytesRead);
-                            System.out.println("TM.EP "+thisId+"_"+conId+" read: "+new String(bout, "US-ASCII"));
+                            //System.out.println("TM.EP "+thisId+"_"+conId+" read: "+new String(bout, "US-ASCII"));
                             rxDataOut.write(new E2MDataMessage(thisId, conId, bout));
                         }
                     } catch (IOException e) {
@@ -245,8 +250,8 @@ public class TunnelManager implements CSProcess {
     public static class ListenerEndpoint extends Endpoint {
         public final int listeningPort;
 
-        public ListenerEndpoint(UUID thisId, UUID pairId, int listeningPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Endpoint2ManagerMessage> rxDataOut) {
-            super(thisId, pairId, rxDataOut, txDataIn);
+        public ListenerEndpoint(DataOwner dataOwner, UUID thisId, UUID pairId, int listeningPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Endpoint2ManagerMessage> rxDataOut) {
+            super(dataOwner, thisId, pairId, rxDataOut, txDataIn);
             this.listeningPort = listeningPort;
             System.out.println("TM.LE "+thisId+" created ("+listeningPort+")");
         }
@@ -281,8 +286,8 @@ public class TunnelManager implements CSProcess {
         public final String talkingAddress;
         public final int talkingPort;
 
-        public TalkerEndpoint(UUID thisId, UUID pairId, String talkingAddress, int talkingPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Endpoint2ManagerMessage> rxDataOut) {
-            super(thisId, pairId, rxDataOut, txDataIn);
+        public TalkerEndpoint(DataOwner dataOwner, UUID thisId, UUID pairId, String talkingAddress, int talkingPort, AltingChannelInput<Pair<UUID, byte[]>> txDataIn, ChannelOutput<Endpoint2ManagerMessage> rxDataOut) {
+            super(dataOwner, thisId, pairId, rxDataOut, txDataIn);
             this.talkingAddress = talkingAddress;
             this.talkingPort = talkingPort;
             System.out.println("TM.TE "+thisId+" created (" + talkingAddress + ":" + talkingPort + ")");
@@ -310,7 +315,8 @@ public class TunnelManager implements CSProcess {
     
     // Class doesn't use this for checking, only for e.g. logging
     public final UUID nodeId;
-    
+    public final DataOwner dataOwner;
+        
     // private final AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn; // ...give to endpoints?
     private final HashMap<UUID, ChannelOutput<Pair<UUID, byte[]>>> internalTxDataOuts = new HashMap<>(); // EndpointId -> channel(connection, data). In loop, send data to an endpoint
     private final AltingChannelInput<Endpoint2ManagerMessage> internalRxDataIn; // (connection, data) put on loop //NEXT Send connection request on first message, I guess
@@ -344,7 +350,8 @@ public class TunnelManager implements CSProcess {
         return null;
     }
     
-    public TunnelManager(UUID nodeId, AltingFCServer<LocalMessage,Boolean> localHandlerServer, AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer, ChannelOutput<OutgoingTransferState> txOtsOut, FCClient<String, Boolean> confirmationClient) {
+    public TunnelManager(DataOwner dataOwner, UUID nodeId, AltingFCServer<LocalMessage,Boolean> localHandlerServer, AltingFCServer<Pair<CRToken,Object>,Boolean> handlerServer, ChannelOutput<OutgoingTransferState> txOtsOut, FCClient<String, Boolean> confirmationClient) {
+        this.dataOwner = dataOwner;
         this.nodeId = nodeId;
         this.localHandlerServer = localHandlerServer;
         this.handlerServer = handlerServer;
@@ -388,7 +395,7 @@ public class TunnelManager implements CSProcess {
                             Any2OneChannel<Pair<UUID, byte[]>> internalTxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
                             AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn = internalTxDataChannel.in();
                             internalTxDataOuts.put(responseTunnelId, JcspUtils.logDeadlock(internalTxDataChannel.out()));
-                            ep = new ListenerEndpoint(responseTunnelId, m.initiatorTunnelId, m.incomingPort, internalTxDataIn, internalRxDataOut);
+                            ep = new ListenerEndpoint(dataOwner, responseTunnelId, m.initiatorTunnelId, m.incomingPort, internalTxDataIn, internalRxDataOut);
                             localEndpoints.put(responseTunnelId, ep);
                             break;
                         }
@@ -397,7 +404,7 @@ public class TunnelManager implements CSProcess {
                             Any2OneChannel<Pair<UUID, byte[]>> internalTxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
                             AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn = internalTxDataChannel.in();
                             internalTxDataOuts.put(responseTunnelId, JcspUtils.logDeadlock(internalTxDataChannel.out()));
-                            ep = new TalkerEndpoint(responseTunnelId, m.initiatorTunnelId, m.outgoingAddress, m.outgoingPort, internalTxDataIn, internalRxDataOut);
+                            ep = new TalkerEndpoint(dataOwner, responseTunnelId, m.initiatorTunnelId, m.outgoingAddress, m.outgoingPort, internalTxDataIn, internalRxDataOut);
                             localEndpoints.put(responseTunnelId, ep);
                             break;
                         }
@@ -429,7 +436,7 @@ public class TunnelManager implements CSProcess {
                         Any2OneChannel<Pair<UUID, byte[]>> internalTxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
                         AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn = internalTxDataChannel.in();
                         internalTxDataOuts.put(r.initiatorTunnelId, JcspUtils.logDeadlock(internalTxDataChannel.out()));
-                        ep = new TalkerEndpoint(r.initiatorTunnelId, m.responseTunnelId, r.outgoingAddress, r.outgoingPort, internalTxDataIn, internalRxDataOut);
+                        ep = new TalkerEndpoint(dataOwner, r.initiatorTunnelId, m.responseTunnelId, r.outgoingAddress, r.outgoingPort, internalTxDataIn, internalRxDataOut);
                         localEndpoints.put(r.initiatorTunnelId, ep);
                         break;
                     }
@@ -438,7 +445,7 @@ public class TunnelManager implements CSProcess {
                         Any2OneChannel<Pair<UUID, byte[]>> internalTxDataChannel = Channel.<Pair<UUID, byte[]>> any2one(new InfiniteBuffer<>());
                         AltingChannelInput<Pair<UUID, byte[]>> internalTxDataIn = internalTxDataChannel.in();
                         internalTxDataOuts.put(r.initiatorTunnelId, JcspUtils.logDeadlock(internalTxDataChannel.out()));
-                        ep = new ListenerEndpoint(r.initiatorTunnelId, m.responseTunnelId, r.incomingPort, internalTxDataIn, internalRxDataOut);
+                        ep = new ListenerEndpoint(dataOwner, r.initiatorTunnelId, m.responseTunnelId, r.incomingPort, internalTxDataIn, internalRxDataOut);
                         localEndpoints.put(r.initiatorTunnelId, ep);
                         break;
                     }

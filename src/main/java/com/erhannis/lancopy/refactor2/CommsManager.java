@@ -431,7 +431,8 @@ public class CommsManager implements CSProcess {
         }
         DisableableTimer transferTimer = new DisableableTimer();
         LinkedHashMap<UUID, IncomingTransferState> incomingTransfers = new LinkedHashMap<>();
-        LinkedHashMap<UUID, OutgoingTransferState> outgoingTransfers = new LinkedHashMap<>(); //NEXT Order these, please
+        // (nodeId -> (correlationId -> state))
+        FactoryHashMap<UUID, LinkedHashMap<UUID, OutgoingTransferState>> outgoingTransfers = new FactoryHashMap<>((input) -> new LinkedHashMap<UUID, OutgoingTransferState>());
         Alternative alt = new Alternative(new Guard[]{aadIn, lsumIn, subscribeIn, txOtsIn, internalRxMsgIn, internalChannelReaderShuffleAIn, internalCommStatusIn, internalCommChannelIn, internalRxBroadcastIn, internalShowLocalFingerprintIn, dataServer, rebroadcastTimer, transferTimer});
         while (true) {
             try {
@@ -479,7 +480,7 @@ public class CommsManager implements CSProcess {
                     }
                     case 3: { // txOtsIn
                         OutgoingTransferState ots = txOtsIn.read();
-                        outgoingTransfers.put(ots.correlationId, ots);
+                        outgoingTransfers.get(ots.targetId).put(ots.correlationId, ots);
                         transferTimer.set(0);
                         break;
                     }
@@ -519,9 +520,9 @@ public class CommsManager implements CSProcess {
                             String mimeType = data.getMime(false);
                             InputStream is = data.serialize(false);
 
-                            int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);                            
+                            int chunkSize = (int) dataOwner.options.getOrDefault("Comms.chunk_size", 1024*16);
                             OutgoingTransferState state = new OTSPlain(drm.correlationId, msg.a.nodeId, is, chunkSize, mimeType);
-                            outgoingTransfers.put(drm.correlationId, state); //THINK May not need it to be a map, anymore, just a list or set
+                            outgoingTransfers.get(msg.a.nodeId).put(drm.correlationId, state); //THINK May not need it to be a map, anymore, just a list or set
                             transferTimer.set(0);
                         } else if (o instanceof DataStartMessage) {
                             //TODO The data messages have byte[], which could be made huge; a DoS attack.  Consider.
@@ -669,52 +670,52 @@ public class CommsManager implements CSProcess {
                     }
                     case 12: { // transferTimer
                         //NEXT Add other (e.g. tunnel) requests to set?
-                        boolean somethingSent = false;
-                        
-                        // This isn't officially necessary - but to maintain relative ordering, I want to make sure outgoing messages, to a single node, are sent in order
-                        //RAINY Though, ideally this would be handled differently.
-                        HashSet<NodeManager.NMInterface> blockedNms = new HashSet<>();
-                        
-                        
-                        for (Iterator<Entry<UUID, OutgoingTransferState>> iter = outgoingTransfers.entrySet().iterator(); iter.hasNext();) {
-                            Entry<UUID, OutgoingTransferState> entry = iter.next();
-                            UUID correlationId = entry.getKey();
-                            OutgoingTransferState state = entry.getValue();
-                            NodeManager.NMInterface nm = nodes.get(state.targetId);
-                            if (nm == null) {
-                                System.err.println("CM Missing NM?? " + state.targetId);
-                                continue;
-                            } else {
-                                if (blockedNms.contains(nm)) {
-                                    //LEAK I think this might be heavy, when transferring many things or s.t.
-                                    continue;
-                                }
-                                if (!nm.txMsgOut.shouldWrite()) {
-                                    blockedNms.add(nm);
-                                    System.out.println("CM channel not ready to rx; skipping...");
-                                    continue;
-                                }
+                        boolean somethingSent = false;                        
+                        boolean transfersExist = false;
+                        for (Entry<UUID,LinkedHashMap<UUID,OutgoingTransferState>> oneNodesTransfers : outgoingTransfers.entrySet()) {
+                            if (!oneNodesTransfers.getValue().isEmpty()) {
+                                transfersExist = true;
                             }
-                            
-                            Object m = state.nextMessage();
-                            System.out.println("CM tx " + m);
-                            byte[] msg = dataOwner.serialize(logSend(m));
-                            nm.txMsgOut.write(msg); //THINK What happens if the tx fails?  How to tell e.g. the TunnelManager?
-                            somethingSent = true;
+                            for (Iterator<Entry<UUID, OutgoingTransferState>> iter = oneNodesTransfers.getValue().entrySet().iterator(); iter.hasNext();) {
+                                Entry<UUID, OutgoingTransferState> entry = iter.next();
+                                UUID correlationId = entry.getKey();
+                                OutgoingTransferState state = entry.getValue();
+                                NodeManager.NMInterface nm = nodes.get(state.targetId);
+                                if (nm == null) {
+                                    System.err.println("CM Missing NM?? " + state.targetId);
+                                    continue;
+                                } else {
+                                    if (!nm.txMsgOut.shouldWrite()) {
+                                        // It isn't officially necessary to skip the rest of a node's transfers - but to maintain relative ordering, I want to make sure outgoing messages, to a single node, are sent in order.
+                                        //RAINY Though, ideally this would be handled differently.
+                                        //        Maybe to try to permit simultaneous separate transfers to share the bandwidth.
+                                        //        The tunnels work by separate one-off transfers, though.
+                                        //        //RAINY It'd probably be better for both the data-providing and data-writing sides here to permit blocking, and funnel the whole (half)stream through one OutgoingTransferState.
+                                        System.out.println("CM channel not ready to rx; skipping...");
+                                        break;
+                                    }
+                                }
 
-                            if (state.eom) {
-                                iter.remove();
-                                System.out.println("CM finished tx " + entry.getKey());
+                                Object m = state.nextMessage();
+                                System.out.println("CM tx " + m);
+                                byte[] msg = dataOwner.serialize(logSend(m));
+                                nm.txMsgOut.write(msg); //THINK What happens if the tx fails?  How to tell e.g. the TunnelManager?
+                                somethingSent = true;
+
+                                if (state.eom) {
+                                    iter.remove();
+                                    System.out.println("CM finished tx " + entry.getKey());
+                                }
+
+//                                state.index++;
                             }
-                            
-//                            state.index++;
                         }
                         if (!somethingSent) {
                             System.out.println("CM nothing ready to tx, delaying...");
                             //TODO Optionize?
                             transferTimer.setAlarm(transferTimer.read() + 100);
                         }
-                        if (outgoingTransfers.isEmpty()) {
+                        if (!transfersExist) {
                             transferTimer.turnOff();
                         }
                         break;

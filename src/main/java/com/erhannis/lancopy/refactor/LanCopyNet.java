@@ -160,7 +160,7 @@ public class LanCopyNet {
                         if (tunnelsEnabled) {
                             AltingFunctionChannel<LocalMessage, Boolean> localHandlerCall = new AltingFunctionChannel<>(true);
                             AltingFunctionChannel<Pair<NodeManager.CRToken,Object>, Boolean> handlerCall = new AltingFunctionChannel<>(true);
-                            new ProcessManager(new TunnelManager(nodeId, localHandlerCall.getServer(), handlerCall.getServer(), txOtsOut, confirmationCall.getClient())).start();
+                            new ProcessManager(new TunnelManager(dataOwner, nodeId, localHandlerCall.getServer(), handlerCall.getServer(), txOtsOut, confirmationCall.getClient())).start();
                             mhs.add(Pair.gen(localHandlerCall.getClient(), handlerCall.getClient()));
                         }
                         //PERIODIC Extra message handlers go here, or in globalMessageHandlers
